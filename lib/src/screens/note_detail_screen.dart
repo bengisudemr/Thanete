@@ -7,6 +7,7 @@ import 'package:thanette/src/models/note.dart';
 import 'package:thanette/src/models/drawing.dart';
 import 'package:thanette/src/widgets/drawing_canvas.dart';
 import 'package:thanette/src/widgets/drawing_toolbar.dart';
+import 'package:thanette/src/widgets/color_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -152,6 +153,36 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
             child: const Text('Temizle', style: TextStyle(color: Colors.red)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showColorPicker() {
+    final note = widget.args.id != null
+        ? context.read<NotesProvider>().getById(widget.args.id!)
+        : null;
+    if (note == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        margin: const EdgeInsets.all(20),
+        child: ColorPicker(
+          selectedColor: note.color,
+          onColorChanged: (color) async {
+            if (widget.args.id != null) {
+              await context.read<NotesProvider>().updateNoteColorRemote(
+                id: widget.args.id!,
+                color: color,
+              );
+              setState(() {
+                _hasChanges = true;
+              });
+            }
+          },
+        ),
       ),
     );
   }
@@ -583,6 +614,32 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                     ),
 
                     // Action buttons
+                    // Color picker button
+                    if (!isNewNote)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          icon: Icon(
+                            Icons.palette_outlined,
+                            size: 20,
+                            color: color,
+                          ),
+                          onPressed: _showColorPicker,
+                        ),
+                      ),
+
+                    if (!isNewNote) const SizedBox(width: 12),
+
                     // Drawing mode toggle
                     Container(
                       decoration: BoxDecoration(
@@ -935,10 +992,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                               const SizedBox(width: 8),
 
                               // Format buttons - only show most important ones
-                              _buildFormatButton(
-                                Icons.format_bold,
-                                'Kalın',
-                              ),
+                              _buildFormatButton(Icons.format_bold, 'Kalın'),
                             ],
                           ),
                         ),

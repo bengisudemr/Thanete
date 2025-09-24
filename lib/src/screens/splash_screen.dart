@@ -16,9 +16,10 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 800), () {
-      final logged = context.read<AuthProvider>().isLoggedIn;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await context.read<AuthProvider>().setLoggedInFromSession();
       if (!mounted) return;
+      final logged = context.read<AuthProvider>().isLoggedIn;
       Navigator.of(context).pushReplacementNamed(
         logged ? NotesListScreen.route : LoginScreen.route,
       );

@@ -23,7 +23,7 @@ class ThanetteLogo extends StatelessWidget {
   }
 
   Widget _imageOrFallback(double size) {
-    // For now use gradient text as primary to avoid missing-asset failures.
+    // Use gradient logo for now - asset will be added later
     return Container(
       width: size,
       height: size,

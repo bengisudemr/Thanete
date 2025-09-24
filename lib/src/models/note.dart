@@ -42,7 +42,8 @@ class NoteModel {
   final String id;
   String title;
   String body;
-  final Color color;
+  Color color;
+  bool isPinned;
   final List<NoteAttachment> attachments;
   DrawingData? drawingData;
 
@@ -51,6 +52,7 @@ class NoteModel {
     required this.title,
     required this.body,
     required this.color,
+    this.isPinned = false,
     List<NoteAttachment>? attachments,
     this.drawingData,
   }) : attachments = attachments ?? [];

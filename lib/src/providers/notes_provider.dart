@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:thanette/src/models/note.dart';
 import 'package:thanette/src/models/drawing.dart';
+import 'package:thanette/src/providers/supabase_service.dart';
 
 class NotesProvider extends ChangeNotifier {
   final List<NoteModel> _all = [];
@@ -18,27 +19,62 @@ class NotesProvider extends ChangeNotifier {
   bool get hasMore => _hasMore;
   String get searchQuery => _searchQuery;
 
-  void bootstrap() {
-    // seed demo notes
-    final seedColors = const [
-      Color(0xFF7B61FF),
-      Color(0xFFFFD166),
-      Color(0xFF6EE7B7),
-      Color(0xFF111827),
-    ];
-    for (int i = 0; i < 5; i++) {
-      _all.add(
-        NoteModel(
-          id: '${i + 1}',
-          title: i == 0 ? 'grocery day' : 'note ${i + 1}',
-          body: i == 0
-              ? 'carrots, cardamon, almond flour, cashews...'
-              : 'some text for note ${i + 1}',
-          color: seedColors[i % seedColors.length],
-        ),
-      );
+  Future<void> bootstrap() async {
+    await loadFromSupabase();
+  }
+
+  Future<void> loadFromSupabase() async {
+    if (_isLoading) return;
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final notes = await SupabaseService.instance.getNotes();
+
+      _all.clear();
+      // deterministic color pool
+      final seedColors = const [
+        Color(0xFF7B61FF),
+        Color(0xFFFFD166),
+        Color(0xFF6EE7B7),
+        Color(0xFF111827),
+      ];
+
+      for (int i = 0; i < notes.length; i++) {
+        final n = notes[i];
+        // Get color from database or use default
+        Color noteColor = seedColors[i % seedColors.length];
+        if (n.containsKey('color') && n['color'] != null) {
+          try {
+            noteColor = Color(n['color'] as int);
+          } catch (e) {
+            // If color parsing fails, use default
+            noteColor = seedColors[i % seedColors.length];
+          }
+        }
+
+        _all.add(
+          NoteModel(
+            id: (n['id'] ?? '').toString(),
+            title: (n['title'] ?? 'untitled').toString(),
+            body: (n['content'] ?? '').toString(),
+            color: noteColor,
+          ),
+        );
+      }
+
+      _visible.clear();
+      final end = min(_pageSize, _all.length);
+      _visible.addAll(_all.sublist(0, end));
+      _hasMore = end < _all.length;
+    } catch (_) {
+      // On error, avoid stuck loader
+      _visible.clear();
+      _hasMore = false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-    loadNextPage();
   }
 
   void loadNextPage() {
@@ -52,6 +88,7 @@ class NotesProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Legacy local create (kept if UI calls it). Does NOT persist.
   String createNote() {
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     final colorPool = const [
@@ -66,6 +103,36 @@ class NotesProvider extends ChangeNotifier {
       body: '',
       color: colorPool[DateTime.now().millisecond % colorPool.length],
     );
+    _all.insert(0, note);
+    _visible.insert(0, note);
+    notifyListeners();
+    return id;
+  }
+
+  // New: Persisted create that inserts to Supabase and returns new id.
+  Future<String> createNoteRemote({
+    String title = 'new note',
+    String body = '',
+  }) async {
+    final colorPool = const [
+      Color(0xFF7B61FF),
+      Color(0xFFFFD166),
+      Color(0xFF6EE7B7),
+      Color(0xFF111827),
+    ];
+
+    // Ensure we don't save empty titles to database
+    final finalTitle = title.trim().isEmpty ? 'untitled' : title.trim();
+    final inserted = await SupabaseService.instance.addNote(finalTitle, body);
+    final id = (inserted['id'] ?? '').toString();
+
+    final note = NoteModel(
+      id: id,
+      title: finalTitle,
+      body: body,
+      color: colorPool[DateTime.now().millisecond % colorPool.length],
+    );
+
     _all.insert(0, note);
     _visible.insert(0, note);
     notifyListeners();
@@ -93,6 +160,81 @@ class NotesProvider extends ChangeNotifier {
     if (vIndex != -1) {
       _visible[vIndex] = _all[index];
     }
+    notifyListeners();
+  }
+
+  Future<void> updateNoteRemote({
+    required String id,
+    required String title,
+    required String body,
+  }) async {
+    // Ensure we don't save empty titles to database
+    final finalTitle = title.trim().isEmpty ? 'untitled' : title.trim();
+    await SupabaseService.instance.updateNote(id, finalTitle, body);
+    updateNote(id: id, title: finalTitle, body: body);
+  }
+
+  void updateNoteColor({required String id, required Color color}) {
+    final index = _all.indexWhere((n) => n.id == id);
+    if (index == -1) return;
+    _all[index].color = color;
+    final vIndex = _visible.indexWhere((n) => n.id == id);
+    if (vIndex != -1) {
+      _visible[vIndex] = _all[index];
+    }
+    notifyListeners();
+  }
+
+  Future<void> updateNoteColorRemote({
+    required String id,
+    required Color color,
+  }) async {
+    try {
+      await SupabaseService.instance.updateNoteColor(id, color);
+      updateNoteColor(id: id, color: color);
+    } catch (e) {
+      // If database update fails (e.g., column doesn't exist), still update locally
+      print('Warning: Could not save color to database: $e');
+      updateNoteColor(id: id, color: color);
+    }
+  }
+
+  void togglePin(String id) {
+    final index = _all.indexWhere((n) => n.id == id);
+    if (index == -1) return;
+    _all[index].isPinned = !_all[index].isPinned;
+
+    // Reorder notes: pinned notes first, then by creation order
+    _all.sort((a, b) {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return 0; // Keep original order for same pin status
+    });
+
+    // Update visible list
+    _visible.clear();
+    final end = min(_pageSize, _all.length);
+    _visible.addAll(_all.sublist(0, end));
+    _hasMore = end < _all.length;
+
+    notifyListeners();
+  }
+
+  void reorderNotes(int oldIndex, int newIndex) {
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+
+    // Move in all list
+    final item = _all.removeAt(oldIndex);
+    _all.insert(newIndex, item);
+
+    // Update visible list
+    _visible.clear();
+    final end = min(_pageSize, _all.length);
+    _visible.addAll(_all.sublist(0, end));
+    _hasMore = end < _all.length;
+
     notifyListeners();
   }
 
@@ -136,6 +278,13 @@ class NotesProvider extends ChangeNotifier {
     _all.removeWhere((n) => n.id == id);
     _visible.removeWhere((n) => n.id == id);
     notifyListeners();
+  }
+
+  Future<void> deleteNoteRemote(String id) async {
+    await SupabaseService.instance.deleteNote(id);
+    deleteNote(id);
+    // optional: refetch to ensure pagination counts
+    await loadFromSupabase();
   }
 
   void searchNotes(String query) {
