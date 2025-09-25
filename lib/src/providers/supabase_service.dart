@@ -172,6 +172,16 @@ class SupabaseService {
     return Map<String, dynamic>.from(updated as Map);
   }
 
+  Future<Map<String, dynamic>> updateNotePin(String id, bool isPinned) async {
+    final updated = await _client
+        .from('notes')
+        .update({'is_pinned': isPinned})
+        .eq('id', id)
+        .select()
+        .single();
+    return Map<String, dynamic>.from(updated as Map);
+  }
+
   RealtimeChannel subscribeToNotes(
     void Function(PostgresChangePayload payload) onChange,
   ) {

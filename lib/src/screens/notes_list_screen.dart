@@ -6,8 +6,8 @@ import 'package:thanette/src/widgets/thanette_logo.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thanette/src/screens/login_screen.dart';
 import 'package:thanette/src/providers/supabase_service.dart';
-import 'package:thanette/src/models/note.dart';
 import 'package:thanette/src/widgets/color_picker.dart';
+import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 
 class NotesListScreen extends StatefulWidget {
   static const route = '/notes';
@@ -428,121 +428,61 @@ class _NotesListScreenState extends State<NotesListScreen> {
   }
 
   Widget _buildNotesGrid(List notes, provider) {
-    return DragTarget<NoteModel>(
-      onAccept: (draggedNote) {
-        // Handle drop logic here if needed
-      },
-      builder: (context, candidateData, rejectedData) {
-        return GridView.builder(
-          controller: _scrollController,
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+    return Column(
+      children: [
+        Expanded(
+          child: ReorderableGridView.count(
+            controller: _scrollController,
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
             crossAxisCount: 2,
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
             childAspectRatio: 0.85,
-          ),
-          itemCount: (notes.isNotEmpty && provider.hasMore)
-              ? notes.length + 1
-              : notes.length,
-          itemBuilder: (context, index) {
-            if (index >= notes.length) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.grey.withOpacity(0.2)),
-                ),
-                child: const Center(
-                  child: CircularProgressIndicator(
-                    color: Color(0xFFEC60FF),
-                    strokeWidth: 2,
-                  ),
-                ),
-              );
-            }
+            onReorder: (oldIndex, newIndex) {
+              // Pinlenmiş notlar sıralanamaz
+              if (notes[oldIndex].isPinned) return;
 
-            final note = notes[index];
-            // Define a set of beautiful gradient colors for variety
-            final gradients = [
-              [const Color(0xFFEC60FF), const Color(0xFFFF4D79)], // Pink-Red
-              [const Color(0xFF667EEA), const Color(0xFF764BA2)], // Purple-Blue
-              [const Color(0xFF6EE7B7), const Color(0xFF3B82F6)], // Green-Blue
-              [
-                const Color(0xFFFBBF24),
-                const Color(0xFFF59E0B),
-              ], // Yellow-Orange
-              [const Color(0xFF8B5CF6), const Color(0xFFEC4899)], // Purple-Pink
-              [const Color(0xFF10B981), const Color(0xFF059669)], // Green
-            ];
+              // Yeni index'i pinlenmiş notların sayısına göre ayarla
+              final pinnedCount = notes.where((note) => note.isPinned).length;
+              if (newIndex < pinnedCount) {
+                newIndex = pinnedCount;
+              }
 
-            // Use note's actual color or fallback to index-based gradient
-            final cardGradient = note.color != null
-                ? <Color>[note.color!, note.color!.withOpacity(0.7)]
-                : gradients[index % gradients.length];
+              context.read<NotesProvider>().reorderNotes(oldIndex, newIndex);
+            },
+            children: notes.asMap().entries.map((entry) {
+              final index = entry.key;
+              final note = entry.value;
 
-            return Draggable<NoteModel>(
-              key: ValueKey(note.id),
-              data: note,
-              feedback: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  width: 160,
-                  height: 180,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        cardGradient[0].withOpacity(0.1),
-                        cardGradient[1].withOpacity(0.05),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: cardGradient[0].withOpacity(0.2),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      note.title.isEmpty ? 'Başlıksız not' : note.title,
-                      style: const TextStyle(
-                        color: Color(0xFF1F2937),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              ),
-              childWhenDragging: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      cardGradient[0].withOpacity(0.05),
-                      cardGradient[1].withOpacity(0.02),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: cardGradient[0].withOpacity(0.1),
-                    width: 1.5,
-                  ),
-                ),
-                child: const Center(
-                  child: Icon(
-                    Icons.drag_indicator,
-                    color: Colors.grey,
-                    size: 32,
-                  ),
-                ),
-              ),
-              child: GestureDetector(
+              // Define a set of beautiful gradient colors for variety
+              final gradients = [
+                [const Color(0xFFEC60FF), const Color(0xFFFF4D79)], // Pink-Red
+                [
+                  const Color(0xFF667EEA),
+                  const Color(0xFF764BA2),
+                ], // Purple-Blue
+                [
+                  const Color(0xFF6EE7B7),
+                  const Color(0xFF3B82F6),
+                ], // Green-Blue
+                [
+                  const Color(0xFFFBBF24),
+                  const Color(0xFFF59E0B),
+                ], // Yellow-Orange
+                [
+                  const Color(0xFF8B5CF6),
+                  const Color(0xFFEC4899),
+                ], // Purple-Pink
+                [const Color(0xFF10B981), const Color(0xFF059669)], // Green
+              ];
+
+              // Use note's actual color or fallback to index-based gradient
+              final cardGradient = note.color != null
+                  ? <Color>[note.color!, note.color!.withOpacity(0.7)]
+                  : gradients[index % gradients.length];
+
+              return GestureDetector(
+                key: ValueKey(note.id),
                 onTap: () => Navigator.of(context).pushNamed(
                   NoteDetailScreen.route,
                   arguments: NoteDetailArgs(id: note.id),
@@ -573,128 +513,159 @@ class _NotesListScreenState extends State<NotesListScreen> {
                   padding: const EdgeInsets.all(20),
                   child: Stack(
                     children: [
-                      Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // Color indicator at top
-                          Container(
-                            width: 50,
-                            height: 5,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(colors: cardGradient),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
+                      // Note title centered
+                      Center(
+                        child: Text(
+                          note.title.isEmpty ? 'Başlıksız not' : note.title,
+                          style: const TextStyle(
+                            color: Color(0xFF1F2937),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            height: 1.3,
                           ),
-                          const SizedBox(height: 16),
-                          // Note title
-                          Text(
-                            note.title.isEmpty ? 'Başlıksız not' : note.title,
-                            style: const TextStyle(
-                              color: Color(0xFF1F2937),
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              height: 1.3,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const Spacer(),
-                          // Edit button
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  cardGradient[0].withOpacity(0.25),
-                                  cardGradient[1].withOpacity(0.25),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: cardGradient[0].withOpacity(0.6),
-                                width: 2,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: cardGradient[0].withOpacity(0.3),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 3),
-                                ),
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.edit_outlined,
-                                  size: 16,
-                                  color: cardGradient[0],
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Düzenle',
-                                  style: TextStyle(
-                                    color: cardGradient[0],
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                          textAlign: TextAlign.center,
+                          maxLines: 4,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      // Pin icon - absolute top left corner
+                      // Pin button - inset with pastel background and animations
                       Positioned(
                         top: 8,
                         left: 8,
-                        child: GestureDetector(
-                          onTap: () {
-                            context.read<NotesProvider>().togglePin(note.id);
-                          },
-                          child: Icon(
-                            note.isPinned
-                                ? Icons.push_pin_rounded
-                                : Icons.push_pin_outlined,
-                            size: 16,
-                            color: note.isPinned
-                                ? const Color(0xFFE91E63) // Pink
-                                : const Color(0xFF9E9E9E), // Grey
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              context.read<NotesProvider>().togglePinRemote(
+                                note.id,
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeInOut,
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: note.isPinned
+                                    ? const Color(0xFFE91E63).withOpacity(0.2)
+                                    : cardGradient[0].withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: note.isPinned
+                                      ? const Color(0xFFE91E63).withOpacity(0.4)
+                                      : Colors.transparent,
+                                  width: 1.5,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: note.isPinned
+                                        ? const Color(
+                                            0xFFE91E63,
+                                          ).withOpacity(0.2)
+                                        : cardGradient[0].withOpacity(0.15),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                note.isPinned
+                                    ? Icons.push_pin_rounded
+                                    : Icons.push_pin_outlined,
+                                size: 16,
+                                color: note.isPinned
+                                    ? const Color(0xFFE91E63)
+                                    : const Color(0xFF374151), // grey700
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                      // Three dots menu - top right corner
+                      // Three dots menu - inset with pastel background and animations
                       Positioned(
                         top: 8,
                         right: 8,
-                        child: GestureDetector(
-                          onTap: () {
-                            _showNoteMenu(note);
-                          },
-                          child: Icon(
-                            Icons.more_vert,
-                            size: 18,
-                            color: Colors.black.withOpacity(0.6),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              _showNoteMenu(note);
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeInOut,
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: cardGradient[0].withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: cardGradient[0].withOpacity(0.15),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                Icons.more_vert,
+                                size: 16,
+                                color: const Color(0xFF374151), // grey700
+                              ),
+                            ),
                           ),
                         ),
                       ),
+                      // Drag handle - only for non-pinned notes
+                      if (!note.isPinned)
+                        Positioned(
+                          bottom: 8,
+                          right: 8,
+                          child: ReorderableDragStartListener(
+                            index: index,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: cardGradient[0].withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: cardGradient[0].withOpacity(0.2),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.drag_indicator,
+                                size: 16,
+                                color: const Color(0xFF374151).withOpacity(0.6),
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
+              );
+            }).toList(),
+          ),
+        ),
+        // Loading indicator at bottom
+        if (notes.isNotEmpty && provider.hasMore)
+          Container(
+            height: 60,
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.grey.withOpacity(0.2)),
+            ),
+            child: const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFFEC60FF),
+                strokeWidth: 2,
               ),
-            );
-          },
-        );
-      },
+            ),
+          ),
+      ],
     );
   }
 

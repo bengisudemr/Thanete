@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:provider/provider.dart';
 import 'package:thanette/src/providers/auth_provider.dart';
 import 'package:thanette/src/providers/notes_provider.dart';
+import 'package:thanette/src/providers/editor_provider.dart';
 import 'package:thanette/src/screens/login_screen.dart';
 import 'package:thanette/src/screens/note_detail_screen.dart';
 import 'package:thanette/src/screens/notes_list_screen.dart';
@@ -17,10 +20,18 @@ class ThanetteApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => NotesProvider()..bootstrap()),
+        ChangeNotifierProvider(create: (_) => EditorProvider()),
       ],
       child: MaterialApp(
         title: 'thanette',
         debugShowCheckedModeBanner: false,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          quill.FlutterQuillLocalizations.delegate,
+        ],
+        supportedLocales: const [Locale('en'), Locale('tr')],
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
             seedColor: baseColor,

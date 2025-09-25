@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:thanette/src/models/note.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thanette/src/models/drawing.dart';
 import 'package:thanette/src/providers/supabase_service.dart';
 
@@ -13,6 +14,7 @@ class NotesProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _hasMore = true;
   String _searchQuery = '';
+  RealtimeChannel? _notesChannel;
 
   List<NoteModel> get items => List.unmodifiable(_visible);
   bool get isLoading => _isLoading;
@@ -21,6 +23,26 @@ class NotesProvider extends ChangeNotifier {
 
   Future<void> bootstrap() async {
     await loadFromSupabase();
+
+    // Refresh on auth state changes (login/logout)
+    Supabase.instance.client.auth.onAuthStateChange.listen((event) async {
+      await loadFromSupabase();
+    });
+
+    // Subscribe to realtime changes for current user notes
+    _subscribeRealtime();
+  }
+
+  void _subscribeRealtime() {
+    try {
+      _notesChannel?.unsubscribe();
+      _notesChannel = SupabaseService.instance.subscribeToNotes((
+        payload,
+      ) async {
+        // Any insert/update/delete → refresh list
+        await loadFromSupabase();
+      });
+    } catch (_) {}
   }
 
   Future<void> loadFromSupabase() async {
@@ -59,9 +81,20 @@ class NotesProvider extends ChangeNotifier {
             title: (n['title'] ?? 'untitled').toString(),
             body: (n['content'] ?? '').toString(),
             color: noteColor,
+            isPinned: n['is_pinned'] == true,
           ),
         );
       }
+
+      // Sort notes: pinned notes first, then by creation order
+      _all.sort((a, b) {
+        // Pinned notes always come first
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+
+        // For same pin status, maintain creation order (newer first)
+        return 0;
+      });
 
       _visible.clear();
       final end = min(_pageSize, _all.length);
@@ -220,7 +253,50 @@ class NotesProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> togglePinRemote(String id) async {
+    final index = _all.indexWhere((n) => n.id == id);
+    if (index == -1) return;
+
+    final newPinState = !_all[index].isPinned;
+
+    try {
+      await SupabaseService.instance.updateNotePin(id, newPinState);
+      _all[index].isPinned = newPinState;
+
+      // Reorder notes: pinned notes first, then by creation order
+      _all.sort((a, b) {
+        // Pinned notes always come first
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+
+        // For same pin status, maintain creation order (newer first)
+        return 0;
+      });
+
+      // Update visible list
+      _visible.clear();
+      final end = min(_pageSize, _all.length);
+      _visible.addAll(_all.sublist(0, end));
+      _hasMore = end < _all.length;
+
+      notifyListeners();
+    } catch (e) {
+      // If database update fails, still update locally
+      print('Warning: Could not save pin state to database: $e');
+      togglePin(id);
+    }
+  }
+
   void reorderNotes(int oldIndex, int newIndex) {
+    // Pinlenmiş notlar sıralanamaz
+    if (_all[oldIndex].isPinned) return;
+
+    // Yeni index'i pinlenmiş notların sayısına göre ayarla
+    final pinnedCount = _all.where((note) => note.isPinned).length;
+    if (newIndex < pinnedCount) {
+      newIndex = pinnedCount;
+    }
+
     if (oldIndex < newIndex) {
       newIndex -= 1;
     }
@@ -301,6 +377,13 @@ class NotesProvider extends ChangeNotifier {
       final filteredNotes = _all.where((note) {
         return note.title.toLowerCase().contains(_searchQuery);
       }).toList();
+
+      // Sort filtered notes: pinned notes first
+      filteredNotes.sort((a, b) {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return 0;
+      });
 
       _visible.addAll(filteredNotes);
       _hasMore = false; // No pagination for search results

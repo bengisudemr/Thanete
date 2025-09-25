@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:thanette/src/providers/notes_provider.dart';
+import 'package:thanette/src/providers/editor_provider.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
+
 import 'package:thanette/src/models/note.dart';
 import 'package:thanette/src/models/drawing.dart';
 import 'package:thanette/src/widgets/drawing_canvas.dart';
@@ -29,12 +32,14 @@ class NoteDetailScreen extends StatefulWidget {
 class _NoteDetailScreenState extends State<NoteDetailScreen> {
   late final TextEditingController _titleController;
   late final TextEditingController _bodyController;
+  String _prevBodySnapshot = '';
   final FocusNode _titleFocusNode = FocusNode();
   final FocusNode _bodyFocusNode = FocusNode();
   bool _hasChanges = false;
   bool _isDrawingMode = false;
   DrawingSettings _drawingSettings = DrawingSettings();
   DrawingData _drawingData = DrawingData(paths: [], canvasSize: Size.zero);
+  late quill.QuillController _quillController;
 
   @override
   void initState() {
@@ -44,6 +49,12 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
         : null;
     _titleController = TextEditingController(text: note?.title ?? '');
     _bodyController = TextEditingController(text: note?.body ?? '');
+    _prevBodySnapshot = _bodyController.text;
+    // Initialize quill with existing body as plain text
+    _quillController = quill.QuillController(
+      document: quill.Document()..insert(0, _bodyController.text),
+      selection: const TextSelection.collapsed(offset: 0),
+    );
 
     // Initialize drawing data from note
     if (note?.drawingData != null) {
@@ -53,6 +64,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     // Listen for changes
     _titleController.addListener(_onTextChanged);
     _bodyController.addListener(_onTextChanged);
+    _bodyController.addListener(_onBodyChangedForLists);
   }
 
   void _onTextChanged() {
@@ -67,11 +79,22 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   void dispose() {
     _titleController.removeListener(_onTextChanged);
     _bodyController.removeListener(_onTextChanged);
+    _bodyController.removeListener(_onBodyChangedForLists);
+    _quillController.dispose();
     _titleController.dispose();
     _bodyController.dispose();
     _titleFocusNode.dispose();
     _bodyFocusNode.dispose();
     super.dispose();
+  }
+
+  void _onBodyChangedForLists() {
+    final editor = context.read<EditorProvider>();
+    editor.handleAutoNumberedList(
+      _bodyController,
+      previousText: _prevBodySnapshot,
+    );
+    _prevBodySnapshot = _bodyController.text;
   }
 
   void _save() {
@@ -806,32 +829,34 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                               )
                             : Container(
                                 padding: const EdgeInsets.fromLTRB(
-                                  24,
-                                  16,
-                                  24,
-                                  24,
+                                  12,
+                                  8,
+                                  12,
+                                  12,
                                 ),
-                                child: TextField(
-                                  controller: _bodyController,
-                                  focusNode: _bodyFocusNode,
-                                  decoration: const InputDecoration(
-                                    hintText: 'Notunuzu buraya yazın...',
-                                    border: InputBorder.none,
-                                    hintStyle: TextStyle(
-                                      color: Color(0xFF9CA3AF),
-                                      fontSize: 16,
+                                child: Column(
+                                  children: [
+                                    quill.QuillSimpleToolbar(
+                                      controller: _quillController,
                                     ),
-                                  ),
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    color: Color(0xFF374151),
-                                    height: 1.6,
-                                  ),
-                                  maxLines: null,
-                                  expands: true,
-                                  textAlignVertical: TextAlignVertical.top,
-                                  textCapitalization:
-                                      TextCapitalization.sentences,
+                                    const SizedBox(height: 8),
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: const Color(0xFFF3F4F6),
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: quill.QuillEditor.basic(
+                                          controller: _quillController,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                       ),
@@ -992,7 +1017,29 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                               const SizedBox(width: 8),
 
                               // Format buttons - only show most important ones
-                              _buildFormatButton(Icons.format_bold, 'Kalın'),
+                              _buildFormatButton(
+                                Icons.format_bold,
+                                'Kalın',
+                                onTap: () => context
+                                    .read<EditorProvider>()
+                                    .toggleBold(_bodyController),
+                              ),
+                              const SizedBox(width: 8),
+                              _buildFormatButton(
+                                Icons.format_italic,
+                                'İtalik',
+                                onTap: () => context
+                                    .read<EditorProvider>()
+                                    .toggleItalic(_bodyController),
+                              ),
+                              const SizedBox(width: 8),
+                              _buildFormatButton(
+                                Icons.format_strikethrough,
+                                'Üstü Çizili',
+                                onTap: () => context
+                                    .read<EditorProvider>()
+                                    .toggleStrikethrough(_bodyController),
+                              ),
                             ],
                           ),
                         ),

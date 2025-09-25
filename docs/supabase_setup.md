@@ -8,14 +8,16 @@ create table if not exists public.notes (
   title text not null,
   content text not null,
   color integer,
+  is_pinned boolean default false,
   created_at timestamptz not null default now()
 );
 ```
 
-## Add color column to existing table
-If you already have the notes table without the color column, run this SQL command to add it:
+## Add missing columns to existing table
+If you already have the notes table, run these SQL commands to add the missing columns:
 ```sql
 alter table public.notes add column if not exists color integer;
+alter table public.notes add column if not exists is_pinned boolean default false;
 ```
 
 ## Enable Row Level Security
