@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -50,9 +51,25 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     _titleController = TextEditingController(text: note?.title ?? '');
     _bodyController = TextEditingController(text: note?.body ?? '');
     _prevBodySnapshot = _bodyController.text;
-    // Initialize quill with existing body as plain text
+
+    // Initialize quill with existing content
+    quill.Document document;
+    if (note?.body != null && note!.body.isNotEmpty) {
+      try {
+        // Try to parse as Quill Delta JSON
+        final deltaJson = note.body;
+        final parsedJson = jsonDecode(deltaJson);
+        document = quill.Document.fromJson(parsedJson);
+      } catch (e) {
+        // If parsing fails, treat as plain text
+        document = quill.Document()..insert(0, note.body);
+      }
+    } else {
+      document = quill.Document();
+    }
+
     _quillController = quill.QuillController(
-      document: quill.Document()..insert(0, _bodyController.text),
+      document: document,
       selection: const TextSelection.collapsed(offset: 0),
     );
 
@@ -65,9 +82,18 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     _titleController.addListener(_onTextChanged);
     _bodyController.addListener(_onTextChanged);
     _bodyController.addListener(_onBodyChangedForLists);
+    _quillController.addListener(_onQuillChanged);
   }
 
   void _onTextChanged() {
+    if (!_hasChanges) {
+      setState(() {
+        _hasChanges = true;
+      });
+    }
+  }
+
+  void _onQuillChanged() {
     if (!_hasChanges) {
       setState(() {
         _hasChanges = true;
@@ -80,6 +106,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     _titleController.removeListener(_onTextChanged);
     _bodyController.removeListener(_onTextChanged);
     _bodyController.removeListener(_onBodyChangedForLists);
+    _quillController.removeListener(_onQuillChanged);
     _quillController.dispose();
     _titleController.dispose();
     _bodyController.dispose();
@@ -97,12 +124,18 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     _prevBodySnapshot = _bodyController.text;
   }
 
-  void _save() {
+  Future<void> _save() async {
     final id = widget.args.id ?? context.read<NotesProvider>().createNote();
-    context.read<NotesProvider>().updateNote(
+
+    // Get rich text content from Quill controller as JSON
+    final quillContent = _quillController.document.toDelta().toJson();
+    final quillContentJson = jsonEncode(quillContent);
+
+    // Save to database
+    await context.read<NotesProvider>().updateNoteRemote(
       id: id,
       title: _titleController.text,
-      body: _bodyController.text,
+      body: quillContentJson,
     );
 
     // Save drawing data if exists
@@ -237,7 +270,9 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   }
 
   String get _wordCount {
-    final text = '${_titleController.text} ${_bodyController.text}';
+    final titleText = _titleController.text;
+    final bodyText = _quillController.document.toPlainText();
+    final text = '$titleText $bodyText';
     final words = text.trim().split(RegExp(r'\s+'));
     return words.where((word) => word.isNotEmpty).length.toString();
   }
@@ -836,9 +871,7 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                                 ),
                                 child: Column(
                                   children: [
-                                    quill.QuillSimpleToolbar(
-                                      controller: _quillController,
-                                    ),
+                                    _buildCompactQuillToolbar(),
                                     const SizedBox(height: 8),
                                     Expanded(
                                       child: Container(
@@ -1015,31 +1048,6 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
                                 ),
 
                               const SizedBox(width: 8),
-
-                              // Format buttons - only show most important ones
-                              _buildFormatButton(
-                                Icons.format_bold,
-                                'Kalın',
-                                onTap: () => context
-                                    .read<EditorProvider>()
-                                    .toggleBold(_bodyController),
-                              ),
-                              const SizedBox(width: 8),
-                              _buildFormatButton(
-                                Icons.format_italic,
-                                'İtalik',
-                                onTap: () => context
-                                    .read<EditorProvider>()
-                                    .toggleItalic(_bodyController),
-                              ),
-                              const SizedBox(width: 8),
-                              _buildFormatButton(
-                                Icons.format_strikethrough,
-                                'Üstü Çizili',
-                                onTap: () => context
-                                    .read<EditorProvider>()
-                                    .toggleStrikethrough(_bodyController),
-                              ),
                             ],
                           ),
                         ),
@@ -1179,6 +1187,79 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       return '${difference.inMinutes} dakika önce';
     } else {
       return 'Az önce';
+    }
+  }
+}
+
+extension on _NoteDetailScreenState {
+  Widget _buildCompactQuillToolbar() {
+    final Color iconColor = const Color(0xFF374151);
+    final BorderRadius radius = BorderRadius.circular(10);
+    final EdgeInsets padding = const EdgeInsets.symmetric(horizontal: 8);
+
+    Widget btn(IconData icon, VoidCallback onPressed, {String? tooltip}) {
+      return Tooltip(
+        message: tooltip ?? '',
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF9FAFB),
+            borderRadius: radius,
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
+          margin: const EdgeInsets.only(right: 8),
+          child: IconButton(
+            icon: Icon(icon, size: 18, color: iconColor),
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            onPressed: onPressed,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: padding,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            btn(Icons.format_bold, () {
+              _quillController.formatSelection(quill.Attribute.bold);
+            }, tooltip: 'Kalın'),
+            btn(Icons.format_italic, () {
+              _quillController.formatSelection(quill.Attribute.italic);
+            }, tooltip: 'İtalik'),
+            btn(Icons.format_underline, () {
+              _quillController.formatSelection(quill.Attribute.underline);
+            }, tooltip: 'Altı Çizili'),
+            const SizedBox(width: 4),
+            btn(Icons.format_list_bulleted, () {
+              _toggleList(quill.Attribute.ul);
+            }, tooltip: 'Madde İşaretli'),
+            btn(Icons.format_list_numbered, () {
+              _toggleList(quill.Attribute.ol);
+            }, tooltip: 'Numaralı'),
+            const SizedBox(width: 4),
+            btn(Icons.undo, () {
+              _quillController.undo();
+            }, tooltip: 'Geri Al'),
+            btn(Icons.redo, () {
+              _quillController.redo();
+            }, tooltip: 'Yinele'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _toggleList(quill.Attribute attribute) {
+    final isSame = _quillController.getSelectionStyle().attributes.containsKey(
+      attribute.key,
+    );
+    if (isSame) {
+      _quillController.formatSelection(quill.Attribute.clone(attribute, null));
+    } else {
+      _quillController.formatSelection(attribute);
     }
   }
 }
