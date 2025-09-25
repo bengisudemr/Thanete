@@ -73,6 +73,9 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
       selection: const TextSelection.collapsed(offset: 0),
     );
 
+    // Add listener for checklist clicks
+    _quillController.addListener(_onQuillSelectionChanged);
+
     // Initialize drawing data from note
     if (note?.drawingData != null) {
       _drawingData = note!.drawingData!;
@@ -101,12 +104,26 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     }
   }
 
+  void _onQuillSelectionChanged() {
+    // Adjust strikethrough based on checklist state
+    final style = _quillController.getSelectionStyle();
+    final listAttr = style.attributes[quill.Attribute.list.key];
+    if (listAttr?.value == 'checked') {
+      _quillController.formatSelection(quill.Attribute.strikeThrough);
+    } else if (listAttr?.value == 'unchecked') {
+      _quillController.formatSelection(
+        quill.Attribute.clone(quill.Attribute.strikeThrough, null),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _titleController.removeListener(_onTextChanged);
     _bodyController.removeListener(_onTextChanged);
     _bodyController.removeListener(_onBodyChangedForLists);
     _quillController.removeListener(_onQuillChanged);
+    _quillController.removeListener(_onQuillSelectionChanged);
     _quillController.dispose();
     _titleController.dispose();
     _bodyController.dispose();
@@ -125,28 +142,51 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   }
 
   Future<void> _save() async {
-    final id = widget.args.id ?? context.read<NotesProvider>().createNote();
+    final title = _titleController.text.trim();
+    final bodyText = _quillController.document.toPlainText().trim();
+
+    // Don't save if both title and body are empty
+    if (title.isEmpty && bodyText.isEmpty) {
+      Navigator.of(context).pop();
+      return;
+    }
 
     // Get rich text content from Quill controller as JSON
     final quillContent = _quillController.document.toDelta().toJson();
     final quillContentJson = jsonEncode(quillContent);
 
-    // Save to database
-    await context.read<NotesProvider>().updateNoteRemote(
-      id: id,
-      title: _titleController.text,
-      body: quillContentJson,
-    );
+    String id;
+    if (widget.args.id == null) {
+      // Create new note
+      id = await context.read<NotesProvider>().createNoteRemote(
+        title: title.isEmpty ? 'Başlıksız Not' : title,
+        body: quillContentJson,
+      );
+    } else {
+      // Update existing note
+      id = widget.args.id!;
+      await context.read<NotesProvider>().updateNoteRemote(
+        id: id,
+        title: title.isEmpty ? 'Başlıksız Not' : title,
+        body: quillContentJson,
+      );
+    }
 
     // Save drawing data if exists
     if (_drawingData.isNotEmpty) {
       context.read<NotesProvider>().updateNoteDrawing(id, _drawingData);
     }
 
+    if (!mounted) return;
     setState(() {
       _hasChanges = false;
     });
-    Navigator.of(context).pop();
+    // Defer pop to the next frame to avoid disposing during notifyListeners
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    });
   }
 
   void _toggleDrawingMode() {
@@ -1197,18 +1237,27 @@ extension on _NoteDetailScreenState {
     final BorderRadius radius = BorderRadius.circular(10);
     final EdgeInsets padding = const EdgeInsets.symmetric(horizontal: 8);
 
-    Widget btn(IconData icon, VoidCallback onPressed, {String? tooltip}) {
+    Widget btn(
+      IconData icon,
+      VoidCallback onPressed, {
+      String? tooltip,
+      bool isActive = false,
+    }) {
+      final Color bg = isActive
+          ? const Color(0xFF374151)
+          : const Color(0xFFF9FAFB);
+      final Color fg = isActive ? Colors.white : iconColor;
       return Tooltip(
         message: tooltip ?? '',
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFFF9FAFB),
+            color: bg,
             borderRadius: radius,
             border: Border.all(color: const Color(0xFFE5E7EB)),
           ),
           margin: const EdgeInsets.only(right: 8),
           child: IconButton(
-            icon: Icon(icon, size: 18, color: iconColor),
+            icon: Icon(icon, size: 18, color: fg),
             padding: const EdgeInsets.all(8),
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             onPressed: onPressed,
@@ -1217,28 +1266,106 @@ extension on _NoteDetailScreenState {
       );
     }
 
+    final style = _quillController.getSelectionStyle();
+    final isBold = style.attributes.containsKey(quill.Attribute.bold.key);
+    final isItalic = style.attributes.containsKey(quill.Attribute.italic.key);
+    final isUnderline = style.attributes.containsKey(
+      quill.Attribute.underline.key,
+    );
+    final listAttr = style.attributes[quill.Attribute.list.key];
+    final isBulleted = listAttr?.value == 'bullet';
+    final isNumbered = listAttr?.value == 'ordered';
+    final isChecklist =
+        listAttr?.value == 'checked' || listAttr?.value == 'unchecked';
+
     return Container(
       padding: padding,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            btn(Icons.format_bold, () {
-              _quillController.formatSelection(quill.Attribute.bold);
-            }, tooltip: 'Kalın'),
-            btn(Icons.format_italic, () {
-              _quillController.formatSelection(quill.Attribute.italic);
-            }, tooltip: 'İtalik'),
-            btn(Icons.format_underline, () {
-              _quillController.formatSelection(quill.Attribute.underline);
-            }, tooltip: 'Altı Çizili'),
+            btn(
+              Icons.format_bold,
+              () {
+                final has = isBold;
+                _quillController.formatSelection(
+                  has
+                      ? quill.Attribute.clone(quill.Attribute.bold, null)
+                      : quill.Attribute.bold,
+                );
+                setState(() {});
+              },
+              tooltip: 'Kalın',
+              isActive: isBold,
+            ),
+            btn(
+              Icons.format_italic,
+              () {
+                final has = isItalic;
+                _quillController.formatSelection(
+                  has
+                      ? quill.Attribute.clone(quill.Attribute.italic, null)
+                      : quill.Attribute.italic,
+                );
+                setState(() {});
+              },
+              tooltip: 'İtalik',
+              isActive: isItalic,
+            ),
+            btn(
+              Icons.format_underline,
+              () {
+                final has = isUnderline;
+                _quillController.formatSelection(
+                  has
+                      ? quill.Attribute.clone(quill.Attribute.underline, null)
+                      : quill.Attribute.underline,
+                );
+                setState(() {});
+              },
+              tooltip: 'Altı Çizili',
+              isActive: isUnderline,
+            ),
             const SizedBox(width: 4),
-            btn(Icons.format_list_bulleted, () {
-              _toggleList(quill.Attribute.ul);
-            }, tooltip: 'Madde İşaretli'),
-            btn(Icons.format_list_numbered, () {
-              _toggleList(quill.Attribute.ol);
-            }, tooltip: 'Numaralı'),
+            btn(
+              Icons.check_box_outlined,
+              () {
+                _toggleChecklist();
+                setState(() {});
+              },
+              tooltip: 'Kontrol Listesi',
+              isActive: isChecklist,
+            ),
+            btn(
+              Icons.format_list_bulleted,
+              () {
+                if (isBulleted) {
+                  _quillController.formatSelection(
+                    quill.Attribute.clone(quill.Attribute.list, null),
+                  );
+                } else {
+                  _quillController.formatSelection(quill.Attribute.ul);
+                }
+                setState(() {});
+              },
+              tooltip: 'Madde İşaretli',
+              isActive: isBulleted,
+            ),
+            btn(
+              Icons.format_list_numbered,
+              () {
+                if (isNumbered) {
+                  _quillController.formatSelection(
+                    quill.Attribute.clone(quill.Attribute.list, null),
+                  );
+                } else {
+                  _quillController.formatSelection(quill.Attribute.ol);
+                }
+                setState(() {});
+              },
+              tooltip: 'Numaralı',
+              isActive: isNumbered,
+            ),
             const SizedBox(width: 4),
             btn(Icons.undo, () {
               _quillController.undo();
@@ -1260,6 +1387,26 @@ extension on _NoteDetailScreenState {
       _quillController.formatSelection(quill.Attribute.clone(attribute, null));
     } else {
       _quillController.formatSelection(attribute);
+    }
+  }
+
+  void _toggleChecklist() {
+    final style = _quillController.getSelectionStyle();
+    final listAttr = style.attributes[quill.Attribute.list.key];
+    final isChecklist =
+        listAttr?.value == 'checked' || listAttr?.value == 'unchecked';
+
+    if (isChecklist) {
+      // Remove checklist and any strikethrough
+      _quillController.formatSelection(
+        quill.Attribute.clone(quill.Attribute.list, null),
+      );
+      _quillController.formatSelection(
+        quill.Attribute.clone(quill.Attribute.strikeThrough, null),
+      );
+    } else {
+      // Add unchecked checklist
+      _quillController.formatSelection(quill.Attribute.unchecked);
     }
   }
 }

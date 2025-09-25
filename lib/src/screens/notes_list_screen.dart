@@ -355,11 +355,9 @@ class _NotesListScreenState extends State<NotesListScreen> {
         ),
         child: FloatingActionButton(
           onPressed: () async {
-            final id = await context.read<NotesProvider>().createNoteRemote();
-            if (!mounted) return;
             Navigator.of(context).pushNamed(
               NoteDetailScreen.route,
-              arguments: NoteDetailArgs(id: id),
+              arguments: const NoteDetailArgs(id: null),
             );
           },
           backgroundColor: Colors.transparent,

@@ -132,7 +132,7 @@ class NotesProvider extends ChangeNotifier {
     ];
     final note = NoteModel(
       id: id,
-      title: 'new note',
+      title: '',
       body: '',
       color: colorPool[DateTime.now().millisecond % colorPool.length],
     );
@@ -143,10 +143,7 @@ class NotesProvider extends ChangeNotifier {
   }
 
   // New: Persisted create that inserts to Supabase and returns new id.
-  Future<String> createNoteRemote({
-    String title = 'new note',
-    String body = '',
-  }) async {
+  Future<String> createNoteRemote({String title = '', String body = ''}) async {
     final colorPool = const [
       Color(0xFF7B61FF),
       Color(0xFFFFD166),
@@ -154,8 +151,13 @@ class NotesProvider extends ChangeNotifier {
       Color(0xFF111827),
     ];
 
+    // Don't save if both title and body are empty
+    if (title.trim().isEmpty && body.trim().isEmpty) {
+      throw Exception('Cannot create empty note');
+    }
+
     // Ensure we don't save empty titles to database
-    final finalTitle = title.trim().isEmpty ? 'untitled' : title.trim();
+    final finalTitle = title.trim().isEmpty ? 'Başlıksız Not' : title.trim();
     final inserted = await SupabaseService.instance.addNote(finalTitle, body);
     final id = (inserted['id'] ?? '').toString();
 
