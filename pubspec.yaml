@@ -45,6 +45,13 @@ dependencies:
   flutter_dotenv: ^5.1.0
   reorderable_grid_view: ^2.2.7
   flutter_quill: ^11.4.2
+  photo_view: ^0.14.0
+  syncfusion_flutter_pdfviewer: ^31.2.2
+  http: ^1.1.0
+  lottie: ^2.7.0
+  shared_preferences: ^2.2.2
+  share_plus: ^10.1.2
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:
@@ -69,6 +76,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/env/.env
+    - assets/images/
+    - assets/lottie/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

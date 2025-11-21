@@ -1,13 +1,17 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:thanette/src/models/note.dart';
 import 'package:thanette/src/providers/notes_provider.dart';
+import 'package:thanette/src/providers/theme_provider.dart';
+import 'package:thanette/src/providers/app_theme_controller.dart';
 import 'package:thanette/src/screens/note_detail_screen.dart';
-import 'package:thanette/src/widgets/thanette_logo.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:thanette/src/screens/login_screen.dart';
 import 'package:thanette/src/providers/supabase_service.dart';
+import 'package:thanette/src/screens/profile_screen.dart';
 import 'package:thanette/src/widgets/color_picker.dart';
+import 'package:thanette/src/widgets/floating_chat_bubble.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
+import 'package:thanette/src/widgets/ui/ui_primitives.dart';
 
 class NotesListScreen extends StatefulWidget {
   static const route = '/notes';
@@ -21,6 +25,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   String? _profileName;
+  bool _isListView = false;
 
   @override
   void initState() {
@@ -62,104 +67,244 @@ class _NotesListScreenState extends State<NotesListScreen> {
     super.dispose();
   }
 
-  void _showColorPickerForNote(note) {
-    showModalBottomSheet(
+  void _showColorPickerForNote(NoteModel note) {
+    showCupertinoModalPopup(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => Container(
-        margin: const EdgeInsets.all(20),
-        child: ColorPicker(
-          selectedColor: note.color,
-          onColorChanged: (color) async {
-            await context.read<NotesProvider>().updateNoteColorRemote(
-              id: note.id,
-              color: color,
-            );
-          },
+      builder: (context) => CupertinoPopupSurface(
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(AppTheme.spacingXXL),
+            child: ColorPicker(
+              selectedColor: note.color,
+              onColorChanged: (color) async {
+                await context.read<NotesProvider>().updateNoteColorRemote(
+                  id: note.id,
+                  color: color,
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
   }
 
-  void _showNoteMenu(note) {
-    showModalBottomSheet(
+  void _showCategoryPickerForNote(NoteModel note) {
+    final textController = TextEditingController();
+    bool isSaving = false;
+
+    final popupFuture = showCupertinoModalPopup<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        margin: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.95),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: Icon(
-                      Icons.palette_outlined,
-                      color: note.color ?? Colors.grey,
-                    ),
-                    title: const Text('Rengi Değiştir'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showColorPickerForNote(note);
+      builder: (modalCtx) {
+        return CupertinoPopupSurface(
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(AppTheme.spacingXXL),
+              child: StatefulBuilder(
+                builder: (innerCtx, setModalState) {
+                  return Consumer<NotesProvider>(
+                    builder: (context, provider, _) {
+                      final categories = provider.categories
+                          .where((cat) => cat != 'all')
+                          .toList(growable: false);
+                      final maxHeight = (categories.length * 48.0)
+                          .clamp(0.0, 260.0)
+                          .toDouble();
+
+                      Future<void> selectCategory(String category) async {
+                        if (isSaving) return;
+                        setModalState(() => isSaving = true);
+                        try {
+                          final normalized = provider.canonicalizeCategory(
+                            category,
+                          );
+                          await provider.setNoteCategoryRemote(
+                            note.id,
+                            normalized,
+                          );
+                          Navigator.of(modalCtx).pop();
+                        } catch (_) {
+                          setModalState(() => isSaving = false);
+                        }
+                      }
+
+                      Future<void> addNewCategory() async {
+                        final raw = textController.text.trim();
+                        if (raw.isEmpty || isSaving) return;
+                        await selectCategory(raw);
+                      }
+
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'Kategori Seç',
+                            style: AppTheme.textTheme.titleMedium?.copyWith(
+                              color: AppTheme.textPrimary,
+                              fontWeight: AppTheme.fontWeightSemiBold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: AppTheme.spacingL),
+                          if (categories.isNotEmpty)
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxHeight: categories.length <= 3
+                                    ? 180
+                                    : maxHeight,
+                              ),
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                physics: const BouncingScrollPhysics(),
+                                itemCount: categories.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: AppTheme.spacingS),
+                                itemBuilder: (context, index) {
+                                  final category = categories[index];
+                                  final isSelected = category == note.category;
+                                  return CupertinoButton(
+                                    padding: EdgeInsets.zero,
+                                    onPressed: isSaving
+                                        ? null
+                                        : () => selectCategory(category),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: AppTheme.spacingM,
+                                        horizontal: AppTheme.spacingL,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? AppTheme.primaryPink.withOpacity(
+                                                0.12,
+                                              )
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(
+                                          AppTheme.radiusLarge,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              provider.categoryLabel(category),
+                                              style: AppTheme
+                                                  .textTheme
+                                                  .bodyMedium
+                                                  ?.copyWith(
+                                                    color: AppTheme.textPrimary,
+                                                  ),
+                                            ),
+                                          ),
+                                          if (isSelected)
+                                            Icon(
+                                              CupertinoIcons
+                                                  .check_mark_circled_solid,
+                                              size: 20,
+                                              color: AppTheme.primaryPink,
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          if (categories.isNotEmpty)
+                            const SizedBox(height: AppTheme.spacingL),
+                          CupertinoTextField(
+                            controller: textController,
+                            placeholder: 'Yeni kategori adı',
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => addNewCategory(),
+                          ),
+                          const SizedBox(height: AppTheme.spacingS),
+                          CupertinoButton.filled(
+                            onPressed: isSaving ? null : () => addNewCategory(),
+                            child: isSaving
+                                ? const CupertinoActivityIndicator()
+                                : const Text('Kategori Ekle'),
+                          ),
+                          const SizedBox(height: AppTheme.spacingS),
+                          CupertinoButton(
+                            onPressed: () {
+                              if (!isSaving) {
+                                Navigator.of(modalCtx).pop();
+                              }
+                            },
+                            child: const Text('Vazgeç'),
+                          ),
+                        ],
+                      );
                     },
-                  ),
-                  ListTile(
-                    leading: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.red,
-                    ),
-                    title: const Text(
-                      'Notu Sil',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showDeleteConfirmation(note);
-                    },
-                  ),
-                ],
+                  );
+                },
               ),
             ),
-          ],
+          ),
+        );
+      },
+    );
+
+    popupFuture.whenComplete(textController.dispose);
+  }
+
+  void _showNoteMenu(NoteModel note) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _showCategoryPickerForNote(note);
+            },
+            child: const Text('Kategoriyi Değiştir'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _showColorPickerForNote(note);
+            },
+            child: const Text('Rengi Değiştir'),
+          ),
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              Navigator.pop(context);
+              _showDeleteConfirmation(note);
+            },
+            child: const Text('Notu Sil'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Vazgeç'),
         ),
       ),
     );
   }
 
   void _showDeleteConfirmation(note) {
-    showDialog(
+    showCupertinoDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white.withOpacity(0.95),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      builder: (context) => CupertinoAlertDialog(
         title: const Text('Notu Sil'),
         content: const Text('Bu notu silmek istediğinizden emin misiniz?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(),
             child: const Text('İptal'),
           ),
-          TextButton(
+          CupertinoDialogAction(
+            isDestructiveAction: true,
             onPressed: () async {
-              Navigator.pop(context);
+              Navigator.of(context).pop();
               await context.read<NotesProvider>().deleteNoteRemote(note.id);
             },
-            child: const Text('Sil', style: TextStyle(color: Colors.red)),
+            child: const Text('Sil'),
           ),
         ],
       ),
@@ -168,570 +313,836 @@ class _NotesListScreenState extends State<NotesListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final notes = context.watch<NotesProvider>().items;
     final provider = context.watch<NotesProvider>();
+    final notes = provider.items;
 
-    return Scaffold(
-      drawer: _buildDrawer(context),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF8F9FA), Color(0xFFFFFFFF)],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
+    // Watch AppThemeController to rebuild when theme changes
+    return Consumer<AppThemeController>(
+      builder: (context, themeController, _) {
+        return AppScaffold(
+          padded: false,
+          background: AppTheme.backgroundSecondary,
+          body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Column(
             children: [
-              // Header section
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
-                child: Column(
-                  children: [
-                    // Top row with mini menu button
-                    Row(
-                      children: [
-                        Builder(
-                          builder: (ctx) => Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFFEC60FF), Color(0xFFFF4D79)],
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(
-                                    0xFFEC60FF,
-                                  ).withOpacity(0.3),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.menu_rounded,
-                                color: Colors.white,
-                                size: 18,
-                              ),
-                              onPressed: () => Scaffold.of(ctx).openDrawer(),
-                              tooltip: 'Menü',
-                              padding: EdgeInsets.zero,
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    // Logo and title row
-                    Row(
-                      children: [
-                        const ThanetteLogo(size: 40),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Notların',
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF1F2937),
-                                ),
-                              ),
-                              Text(
-                                'Tüm düşüncelerine tek yerden ulaş',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Color(0xFF6B7280),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFEC60FF), Color(0xFFFF4D79)],
-                            ),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            '${notes.length} not',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Search bar
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+              _NotesHeader(
+                profileName: _profileName,
+                noteCount: notes.length,
+                isListView: _isListView,
+                onProfileTap: () =>
+                    Navigator.of(context).pushNamed(ProfileScreen.route),
+                onViewModeChanged: (isList) =>
+                    setState(() => _isListView = isList),
+              ),
+              const SizedBox(height: AppTheme.spacingM),
+              Consumer<NotesProvider>(
+                builder: (context, provider, _) {
+                  final categories = provider.categories;
+                  if (categories.length <= 1) {
+                    return const SizedBox.shrink();
+                  }
+                  return SizedBox(
+                    height: 44,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppTheme.spacingXXL,
                       ),
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (value) {
-                          context.read<NotesProvider>().searchNotes(value);
-                        },
-                        decoration: InputDecoration(
-                          hintText: 'Notlarında ara...',
-                          prefixIcon: const Icon(
-                            Icons.search_outlined,
-                            color: Color(0xFF6B7280),
-                          ),
-                          suffixIcon: _searchController.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(
-                                    Icons.clear,
-                                    color: Color(0xFF6B7280),
-                                  ),
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    context.read<NotesProvider>().clearSearch();
-                                  },
-                                )
-                              : null,
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 16,
-                          ),
-                        ),
-                      ),
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      itemBuilder: (context, index) {
+                        final value = categories[index];
+                        final label = provider.categoryLabel(value);
+                        final isSelected = provider.activeCategory == value;
+                        return _CategoryFilterChip(
+                          label: label,
+                          isSelected: isSelected,
+                          onTap: () => provider.setCategoryFilter(value),
+                        );
+                      },
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(width: AppTheme.spacingS),
+                      itemCount: categories.length,
                     ),
-                  ],
+                  );
+                },
+              ),
+              const SizedBox(height: AppTheme.spacingL),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.spacingXXL,
+                  vertical: AppTheme.spacingXL,
+                ),
+                child: _SearchField(
+                  controller: _searchController,
+                  onChanged: (value) =>
+                      context.read<NotesProvider>().searchNotes(value),
+                  onClear: () {
+                    _searchController.clear();
+                    context.read<NotesProvider>().clearSearch();
+                    setState(() {});
+                  },
                 ),
               ),
-
-              // Notes grid
               Expanded(
-                child: provider.isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : notes.isEmpty
-                    ? _buildEmptyState()
-                    : _buildNotesGrid(notes, provider),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTheme.spacingXXL,
+                  ),
+                  child: provider.isLoading
+                      ? const Center(child: CupertinoActivityIndicator())
+                      : AnimatedSwitcher(
+                          duration: AppTheme.animationFast,
+                          child: notes.isEmpty
+                              ? _buildEmptyState(provider)
+                              : _isListView
+                              ? _NotesListView(
+                                  controller: _scrollController,
+                                  notes: notes,
+                                  onOpen: _openNote,
+                                  onTogglePin: _togglePin,
+                                  onMore: _showNoteMenu,
+                                  hasMore: provider.hasMore,
+                                )
+                              : _NotesGridView(
+                                  controller: _scrollController,
+                                  notes: notes,
+                                  onOpen: _openNote,
+                                  onTogglePin: _togglePin,
+                                  onMore: _showNoteMenu,
+                                  onReorder: provider.reorderNotesLocally,
+                                  hasMore: provider.hasMore,
+                                ),
+                        ),
+                ),
               ),
+            ],
+          ),
+          Positioned(
+            bottom: 25,
+            right: 20,
+            child: _AddNoteButton(
+              onPressed: () {
+                Navigator.of(context).pushNamed(
+                  NoteDetailScreen.route,
+                  arguments: const NoteDetailArgs(id: null),
+                );
+              },
+            ),
+          ),
+          const FloatingChatBubble(extraBottomOffset: 3),
+        ],
+      ),
+    );
+      },
+    );
+  }
+
+  void _openNote(String id) {
+    Navigator.of(
+      context,
+    ).pushNamed(NoteDetailScreen.route, arguments: NoteDetailArgs(id: id));
+  }
+
+  void _togglePin(String id) {
+    context.read<NotesProvider>().togglePinRemote(id);
+  }
+
+  Widget _buildEmptyState(NotesProvider provider) {
+    final isSearching = provider.searchQuery.isNotEmpty;
+    return Center(
+      child: EmptyState(
+        title: isSearching ? 'Arama sonucu yok' : 'Henüz not oluşturulmadı',
+        message: isSearching
+            ? '"${provider.searchQuery}" için sonuç bulamadık.\nFarklı anahtar kelimeler deneyin.'
+            : 'İlk notunu oluşturmak için sağ alttaki + butonuna dokun.',
+        icon: isSearching ? Icons.search_off_outlined : Icons.sticky_note_2,
+        primaryAction: isSearching
+            ? CupertinoButton(
+                onPressed: () {
+                  _searchController.clear();
+                  context.read<NotesProvider>().clearSearch();
+                },
+                color: AppTheme.primaryPink.withOpacity(0.15),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.spacingXXL,
+                  vertical: AppTheme.spacingM,
+                ),
+                child: Text(
+                  'Filtreyi temizle',
+                  style: AppTheme.textTheme.labelLarge?.copyWith(
+                    color: AppTheme.primaryPink,
+                  ),
+                ),
+              )
+            : null,
+      ),
+    );
+  }
+
+  // Drawer removed; profile actions moved to bottom sheet
+}
+
+class _NotesHeader extends StatelessWidget {
+  const _NotesHeader({
+    required this.profileName,
+    required this.noteCount,
+    required this.isListView,
+    required this.onProfileTap,
+    required this.onViewModeChanged,
+  });
+
+  final String? profileName;
+  final int noteCount;
+  final bool isListView;
+  final VoidCallback onProfileTap;
+  final ValueChanged<bool> onViewModeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final greeting = profileName?.split(' ').first ?? 'thanette kullanıcısı';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppTheme.spacingXXL,
+        AppTheme.spacingXXXL,
+        AppTheme.spacingXXL,
+        AppTheme.spacingL,
+      ),
+      child: SurfaceCard(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.spacingXXXL,
+          vertical: AppTheme.spacingXL,
+        ),
+        borderColor: Colors.transparent,
+        borderWidth: 0,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                InkWell(
+                  onTap: onProfileTap,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusXLarge),
+                  child: Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.primaryGradientLinear,
+                      borderRadius: BorderRadius.circular(
+                        AppTheme.radiusXLarge,
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      greeting.characters.first.toUpperCase(),
+                      style: AppTheme.textTheme.titleLarge?.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppTheme.spacingXL),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hoş geldin, $greeting',
+                        style: AppTheme.textTheme.headlineSmall,
+                      ),
+                      const SizedBox(height: AppTheme.spacingS),
+                      Text(
+                        'Notlarını düzenle, fikirlerini yakala ve her şeyi tek yerde tut.',
+                        style: AppTheme.textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppTheme.spacingXL),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTheme.spacingXL,
+                    vertical: AppTheme.spacingS,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryPink.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+                  ),
+                  child: Text(
+                    '$noteCount not',
+                    style: AppTheme.textTheme.labelLarge?.copyWith(
+                      color: AppTheme.primaryPink,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                SizedBox(
+                  height: 36,
+                  child: CupertinoSlidingSegmentedControl<int>(
+                    groupValue: isListView ? 1 : 0,
+                    thumbColor: AppTheme.primaryPink.withOpacity(0.15),
+                    backgroundColor: AppTheme.backgroundTertiary.withOpacity(
+                      0.8,
+                    ),
+                    children: const {
+                      0: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: AppTheme.spacingM,
+                          vertical: 6,
+                        ),
+                        child: Icon(
+                          Icons.grid_view,
+                          size: 20,
+                        ),
+                      ),
+                      1: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: AppTheme.spacingM,
+                          vertical: 6,
+                        ),
+                        child: Icon(
+                          Icons.list,
+                          size: 20,
+                        ),
+                      ),
+                    },
+                    onValueChanged: (value) {
+                      if (value == null) return;
+                      onViewModeChanged(value == 1);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchField extends StatelessWidget {
+  const _SearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoSearchTextField(
+      controller: controller,
+      placeholder: 'Notlarda ara',
+      onChanged: onChanged,
+      onSuffixTap: onClear,
+      placeholderStyle: AppTheme.textTheme.bodyMedium?.copyWith(
+        color: AppTheme.textSecondary,
+      ),
+      style: AppTheme.textTheme.bodyLarge,
+    );
+  }
+}
+
+class _NotesListView extends StatelessWidget {
+  const _NotesListView({
+    required this.controller,
+    required this.notes,
+    required this.onOpen,
+    required this.onTogglePin,
+    required this.onMore,
+    required this.hasMore,
+  });
+
+  final ScrollController controller;
+  final List<NoteModel> notes;
+  final ValueChanged<String> onOpen;
+  final ValueChanged<String> onTogglePin;
+  final ValueChanged<NoteModel> onMore;
+  final bool hasMore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.builder(
+            controller: controller,
+            padding: const EdgeInsets.only(bottom: AppTheme.spacingXXXL),
+            itemCount: notes.length,
+            itemBuilder: (context, index) {
+              final note = notes[index];
+              return _NoteListTile(
+                note: note,
+                onOpen: onOpen,
+                onTogglePin: onTogglePin,
+                onMore: onMore,
+              );
+            },
+          ),
+        ),
+        if (notes.isNotEmpty && hasMore) const _PaginationIndicator(),
+      ],
+    );
+  }
+}
+
+class _NotesGridView extends StatelessWidget {
+  const _NotesGridView({
+    required this.controller,
+    required this.notes,
+    required this.onOpen,
+    required this.onTogglePin,
+    required this.onMore,
+    required this.onReorder,
+    required this.hasMore,
+  });
+
+  final ScrollController controller;
+  final List<NoteModel> notes;
+  final ValueChanged<String> onOpen;
+  final ValueChanged<String> onTogglePin;
+  final ValueChanged<NoteModel> onMore;
+  final void Function(int oldIndex, int newIndex) onReorder;
+  final bool hasMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    // Responsive grid: telefon için 2, tablet için 3-4 sütun
+    int crossAxisCount;
+    double childAspectRatio;
+    
+    if (screenWidth >= 900) {
+      // Büyük tablet/desktop
+      crossAxisCount = 4;
+      childAspectRatio = 0.75;
+    } else if (screenWidth >= 600) {
+      // Tablet
+      crossAxisCount = 3;
+      childAspectRatio = 0.72;
+    } else {
+      // Telefon
+      crossAxisCount = 2;
+      childAspectRatio = 0.78;
+    }
+    
+    return Column(
+      children: [
+        Expanded(
+          child: ReorderableGridView.builder(
+            controller: controller,
+            padding: const EdgeInsets.only(bottom: AppTheme.spacingXXXL),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              crossAxisSpacing: AppTheme.spacingXXL,
+              mainAxisSpacing: AppTheme.spacingXXL,
+              childAspectRatio: childAspectRatio,
+            ),
+            itemCount: notes.length,
+            onReorder: onReorder,
+            itemBuilder: (context, index) {
+              final note = notes[index];
+              return _NoteGridTile(
+                key: ValueKey(note.id),
+                note: note,
+                onOpen: onOpen,
+                onTogglePin: onTogglePin,
+                onMore: onMore,
+              );
+            },
+          ),
+        ),
+        if (notes.isNotEmpty && hasMore) const _PaginationIndicator(),
+      ],
+    );
+  }
+}
+
+class _NoteListTile extends StatelessWidget {
+  const _NoteListTile({
+    required this.note,
+    required this.onOpen,
+    required this.onTogglePin,
+    required this.onMore,
+  });
+
+  final NoteModel note;
+  final ValueChanged<String> onOpen;
+  final ValueChanged<String> onTogglePin;
+  final ValueChanged<NoteModel> onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    return SurfaceCard(
+      margin: const EdgeInsets.only(bottom: AppTheme.spacingXL),
+      padding: const EdgeInsets.all(AppTheme.spacingXXL),
+      borderColor: Colors.transparent,
+      borderWidth: 0,
+      onTap: () => onOpen(note.id),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: note.color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: AppTheme.spacingS),
+              Expanded(
+                child: Text(
+                  note.title.isEmpty ? 'Başlıksız not' : note.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.textTheme.titleMedium,
+                ),
+              ),
+              IconButton(
+                icon: Icon(
+                  note.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                  size: 18,
+                  color: note.isPinned
+                      ? AppTheme.primaryPink
+                      : AppTheme.textTertiary,
+                ),
+                onPressed: () => onTogglePin(note.id),
+              ),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () => onMore(note),
+                child: const Icon(CupertinoIcons.ellipsis, size: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTheme.spacingS),
+          if (note.category.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _CategoryChip(category: note.category),
+            ),
+          const SizedBox(height: AppTheme.spacingXL),
+          _NoteMetadataRow(note: note),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoteGridTile extends StatelessWidget {
+  const _NoteGridTile({
+    super.key,
+    required this.note,
+    required this.onOpen,
+    required this.onTogglePin,
+    required this.onMore,
+  });
+
+  final NoteModel note;
+  final ValueChanged<String> onOpen;
+  final ValueChanged<String> onTogglePin;
+  final ValueChanged<NoteModel> onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    return SurfaceCard(
+      padding: const EdgeInsets.all(AppTheme.spacingXL),
+      borderColor: Colors.transparent,
+      borderWidth: 0,
+      onTap: () => onOpen(note.id),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 8,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+              gradient: LinearGradient(
+                colors: [
+                  note.color.withOpacity(0.9),
+                  note.color.withOpacity(0.4),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppTheme.spacingL),
+          Text(
+            note.title.isEmpty ? 'Başlıksız not' : note.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTheme.textTheme.titleMedium,
+          ),
+          const SizedBox(height: AppTheme.spacingS),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _CategoryChip(category: note.category),
+          ),
+          const Spacer(),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  constraints: const BoxConstraints(),
+                  padding: EdgeInsets.zero,
+                  icon: Icon(
+                    note.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                    size: 18,
+                    color: note.isPinned
+                        ? AppTheme.primaryPink
+                        : AppTheme.textTertiary,
+                  ),
+                  onPressed: () => onTogglePin(note.id),
+                ),
+                const SizedBox(width: AppTheme.spacingXS),
+                IconButton(
+                  constraints: const BoxConstraints(),
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.more_horiz, size: 18),
+                  onPressed: () => onMore(note),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoteMetadataRow extends StatelessWidget {
+  const _NoteMetadataRow({required this.note});
+
+  final NoteModel note;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [_NoteMetaChips(note: note)]);
+  }
+}
+
+class _NoteMetaChips extends StatelessWidget {
+  const _NoteMetaChips({required this.note});
+
+  final NoteModel note;
+
+  List<Widget> _buildChips() {
+    final chips = <Widget>[];
+    if (note.hasDrawing) {
+      chips.add(_MetaChip(icon: Icons.draw, label: 'Çizim'));
+    }
+    if (note.todos.isNotEmpty) {
+      chips.add(
+        _MetaChip(
+          icon: Icons.check_circle_outline,
+          label: '${note.todos.length} görev',
+        ),
+      );
+    }
+    if (note.attachments.isNotEmpty) {
+      chips.add(
+        _MetaChip(icon: Icons.attachment, label: '${note.attachments.length}'),
+      );
+    }
+    if (chips.isEmpty) {
+      chips.add(_MetaChip(icon: Icons.edit_note_outlined, label: 'Not'));
+    }
+    return chips;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: AppTheme.spacingS,
+      runSpacing: AppTheme.spacingS,
+      children: _buildChips(),
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.spacingM,
+        vertical: AppTheme.spacingS,
+      ),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundTertiary,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: AppTheme.textSecondary),
+          const SizedBox(width: AppTheme.spacingS),
+          Text(
+            label,
+            style: AppTheme.textTheme.labelMedium?.copyWith(
+              color: AppTheme.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({required this.category});
+
+  final String category;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = context.read<NotesProvider>().categoryLabel(category);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.spacingM,
+        vertical: AppTheme.spacingXS,
+      ),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryPink.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+      ),
+      child: Text(
+        label,
+        style: AppTheme.textTheme.labelMedium?.copyWith(
+          color: AppTheme.primaryPink,
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryFilterChip extends StatelessWidget {
+  const _CategoryFilterChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      onPressed: onTap,
+      child: AnimatedContainer(
+        duration: AppTheme.animationFast,
+        curve: AppTheme.animationCurve,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.spacingXL,
+          vertical: AppTheme.spacingS,
+        ),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.primaryPink.withOpacity(0.18)
+              : AppTheme.backgroundTertiary.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+          border: Border.all(
+            color: isSelected
+                ? AppTheme.primaryPink.withOpacity(0.4)
+                : AppTheme.borderLight.withOpacity(0.6),
+          ),
+          boxShadow: isSelected ? AppTheme.cardShadow : null,
+        ),
+        child: Text(
+          label,
+          style: AppTheme.textTheme.bodyMedium?.copyWith(
+            color: isSelected ? AppTheme.primaryPink : AppTheme.textPrimary,
+            fontWeight: isSelected
+                ? AppTheme.fontWeightSemiBold
+                : AppTheme.fontWeightMedium,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaginationIndicator extends StatelessWidget {
+  const _PaginationIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTheme.spacingXXL),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spacingXXL,
+            vertical: AppTheme.spacingL,
+          ),
+          decoration: BoxDecoration(
+            color: AppTheme.backgroundPrimary,
+            borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+            boxShadow: AppTheme.cardShadow,
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 16,
+                width: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: AppTheme.spacingM),
+              Text('Daha fazla not yükleniyor...'),
             ],
           ),
         ),
       ),
-      floatingActionButton: Container(
+    );
+  }
+}
+
+class _AddNoteButton extends StatelessWidget {
+  const _AddNoteButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      onPressed: onPressed,
+      child: Container(
+        width: 60,
+        height: 60,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFEC60FF), Color(0xFFFF4D79)],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFEC60FF).withOpacity(0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
+          color: AppTheme.primaryPink,
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: AppTheme.buttonShadow,
         ),
-        child: FloatingActionButton(
-          onPressed: () async {
-            Navigator.of(context).pushNamed(
-              NoteDetailScreen.route,
-              arguments: const NoteDetailArgs(id: null),
-            );
-          },
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          child: const Icon(Icons.add, color: Colors.white, size: 28),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    final provider = context.watch<NotesProvider>();
-    final isSearching = provider.searchQuery.isNotEmpty;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    const Color(0xFFEC60FF).withOpacity(0.1),
-                    const Color(0xFFFF4D79).withOpacity(0.1),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(60),
-              ),
-              child: Icon(
-                isSearching
-                    ? Icons.search_off_outlined
-                    : Icons.note_add_outlined,
-                size: 60,
-                color: const Color(0xFF6B7280),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              isSearching ? 'Arama sonucu bulunamadı' : 'Henüz not yok',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF374151),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              isSearching
-                  ? '"${provider.searchQuery}" için sonuç bulunamadı.\nFarklı kelimeler deneyin.'
-                  : 'İlk notunu oluşturmak için\naşağıdaki butona dokun',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 16,
-                color: Color(0xFF6B7280),
-                height: 1.4,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNotesGrid(List notes, provider) {
-    return Column(
-      children: [
-        Expanded(
-          child: ReorderableGridView.count(
-            controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-            crossAxisCount: 2,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 0.85,
-            onReorder: (oldIndex, newIndex) {
-              // Pinlenmiş notlar sıralanamaz
-              if (notes[oldIndex].isPinned) return;
-
-              // Yeni index'i pinlenmiş notların sayısına göre ayarla
-              final pinnedCount = notes.where((note) => note.isPinned).length;
-              if (newIndex < pinnedCount) {
-                newIndex = pinnedCount;
-              }
-
-              context.read<NotesProvider>().reorderNotes(oldIndex, newIndex);
-            },
-            children: notes.asMap().entries.map((entry) {
-              final index = entry.key;
-              final note = entry.value;
-
-              // Define a set of beautiful gradient colors for variety
-              final gradients = [
-                [const Color(0xFFEC60FF), const Color(0xFFFF4D79)], // Pink-Red
-                [
-                  const Color(0xFF667EEA),
-                  const Color(0xFF764BA2),
-                ], // Purple-Blue
-                [
-                  const Color(0xFF6EE7B7),
-                  const Color(0xFF3B82F6),
-                ], // Green-Blue
-                [
-                  const Color(0xFFFBBF24),
-                  const Color(0xFFF59E0B),
-                ], // Yellow-Orange
-                [
-                  const Color(0xFF8B5CF6),
-                  const Color(0xFFEC4899),
-                ], // Purple-Pink
-                [const Color(0xFF10B981), const Color(0xFF059669)], // Green
-              ];
-
-              // Use note's actual color or fallback to index-based gradient
-              final cardGradient = note.color != null
-                  ? <Color>[note.color!, note.color!.withOpacity(0.7)]
-                  : gradients[index % gradients.length];
-
-              return GestureDetector(
-                key: ValueKey(note.id),
-                onTap: () => Navigator.of(context).pushNamed(
-                  NoteDetailScreen.route,
-                  arguments: NoteDetailArgs(id: note.id),
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        cardGradient[0].withOpacity(0.1),
-                        cardGradient[1].withOpacity(0.05),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: cardGradient[0].withOpacity(0.2),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: cardGradient[0].withOpacity(0.15),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(20),
-                  child: Stack(
-                    children: [
-                      // Note title centered
-                      Center(
-                        child: Text(
-                          note.title.isEmpty ? 'Başlıksız not' : note.title,
-                          style: const TextStyle(
-                            color: Color(0xFF1F2937),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            height: 1.3,
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 4,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // Pin button - inset with pastel background and animations
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              context.read<NotesProvider>().togglePinRemote(
-                                note.id,
-                              );
-                            },
-                            borderRadius: BorderRadius.circular(12),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              curve: Curves.easeInOut,
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: note.isPinned
-                                    ? const Color(0xFFE91E63).withOpacity(0.2)
-                                    : cardGradient[0].withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: note.isPinned
-                                      ? const Color(0xFFE91E63).withOpacity(0.4)
-                                      : Colors.transparent,
-                                  width: 1.5,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: note.isPinned
-                                        ? const Color(
-                                            0xFFE91E63,
-                                          ).withOpacity(0.2)
-                                        : cardGradient[0].withOpacity(0.15),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Icon(
-                                note.isPinned
-                                    ? Icons.push_pin_rounded
-                                    : Icons.push_pin_outlined,
-                                size: 16,
-                                color: note.isPinned
-                                    ? const Color(0xFFE91E63)
-                                    : const Color(0xFF374151), // grey700
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Three dots menu - inset with pastel background and animations
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              _showNoteMenu(note);
-                            },
-                            borderRadius: BorderRadius.circular(12),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              curve: Curves.easeInOut,
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: cardGradient[0].withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: cardGradient[0].withOpacity(0.15),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Icon(
-                                Icons.more_vert,
-                                size: 16,
-                                color: const Color(0xFF374151), // grey700
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Drag handle - only for non-pinned notes
-                      if (!note.isPinned)
-                        Positioned(
-                          bottom: 8,
-                          right: 8,
-                          child: ReorderableDragStartListener(
-                            index: index,
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: cardGradient[0].withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: cardGradient[0].withOpacity(0.2),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Icon(
-                                Icons.drag_indicator,
-                                size: 16,
-                                color: const Color(0xFF374151).withOpacity(0.6),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        // Loading indicator at bottom
-        if (notes.isNotEmpty && provider.hasMore)
-          Container(
-            height: 60,
-            margin: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.7),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.grey.withOpacity(0.2)),
-            ),
-            child: const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFFEC60FF),
-                strokeWidth: 2,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildDrawer(BuildContext context) {
-    final user = Supabase.instance.client.auth.currentUser;
-    final email = user?.email ?? 'Misafir';
-    final displayName =
-        (_profileName != null && _profileName!.trim().isNotEmpty)
-        ? _profileName!
-        : email;
-
-    return Drawer(
-      child: SafeArea(
-        child: Column(
-          children: [
-            ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-              title: Text(
-                displayName,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF374151),
-                ),
-              ),
-              subtitle: Text(
-                email,
-                style: const TextStyle(color: Color(0xFF6B7280)),
-              ),
-            ),
-            const Divider(),
-            const Spacer(),
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    final nav = Navigator.of(context);
-                    try {
-                      await Supabase.instance.client.auth.signOut();
-                    } finally {
-                      if (!mounted) return;
-                      nav.pushNamedAndRemoveUntil(
-                        LoginScreen.route,
-                        (route) => false,
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.logout, color: Colors.white),
-                  label: const Text(
-                    'Oturumu Sonlandır',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE11D48),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+        alignment: Alignment.center,
+        child: const Icon(CupertinoIcons.add, color: Colors.white, size: 26),
       ),
     );
   }

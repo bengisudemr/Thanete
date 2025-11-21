@@ -30,7 +30,7 @@ class ThanetteLogo extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         gradient: const LinearGradient(
-          colors: [Color(0xFFEC60FF), Color(0xFFFF4D79)],
+          colors: [Color(0xFFE6679F), Color(0xFFD946EF)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -50,7 +50,7 @@ class ThanetteLogo extends StatelessWidget {
   static Widget _gradientText(String text, {required TextStyle style}) {
     return ShaderMask(
       shaderCallback: (bounds) => const LinearGradient(
-        colors: [Color(0xFFEC60FF), Color(0xFFFF4D79)],
+        colors: [Color(0xFFE6679F), Color(0xFFD946EF)],
       ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
       child: Text(text, style: style.copyWith(color: Colors.white)),
     );

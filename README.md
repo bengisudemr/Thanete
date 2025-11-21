@@ -1,16 +1,244 @@
-# thanette
+# 🎨 Thanette
 
-A new Flutter project.
+<div align="center">
 
-## Getting Started
+**Modern, Akıllı ve Güçlü Not Alma Deneyimi**
 
-This project is a starting point for a Flutter application.
+[![Flutter](https://img.shields.io/badge/Flutter-3.9.2-02569B?logo=flutter)](https://flutter.dev)
+[![Supabase](https://img.shields.io/badge/Supabase-Backend-3ECF8E?logo=supabase)](https://supabase.com)
+[![License](https://img.shields.io/badge/License-Private-red)]()
 
-A few resources to get you started if this is your first Flutter project:
+</div>
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+---
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## ✨ Özellikler
+
+### 📝 Akıllı Not Alma
+- **Zengin Metin Editörü**: Flutter Quill ile profesyonel metin düzenleme
+- **Kategoriler**: Notlarınızı organize edin ve kolayca bulun
+- **Otomatik Kaydetme**: Değişiklikleriniz anında kaydedilir
+- **Undo/Redo**: 50 adıma kadar geri alma/ileri alma desteği
+
+### 🎨 Gelişmiş Çizim Özellikleri
+- **Apple Pencil Desteği**: Basınç hassasiyeti ve eğim algılama
+- **Çoklu Araçlar**: Kalem, vurgulayıcı ve silgi
+- **Gerçek Zamanlı Çizim**: Akıcı ve kesintisiz çizim deneyimi
+- **Özelleştirilebilir Renkler ve Kalınlıklar**
+
+### 📎 Dosya Yönetimi
+- **Dosya Ekleme**: PDF, resim ve belgeleri notlarınıza ekleyin
+- **Dosya Notlama**: PDF ve resimlerin üzerine çizim yapın
+- **Galeri ve Kamera**: Hızlı dosya ekleme
+- **Dosya Önizleme**: Tüm dosyalarınızı uygulama içinde görüntüleyin
+
+### ✅ Görev Yönetimi
+- **Todo List**: Notlarınıza görev listeleri ekleyin
+- **İnteraktif Checklist**: Görevlerinizi kolayca takip edin
+
+### 🤖 AI Asistanı
+- **Akıllı Chatbot**: OpenAI entegrasyonu ile notlarınızı geliştirin
+- **Metin Düzenleme**: AI ile notlarınızı düzenleyin ve iyileştirin
+- **Yüzen Chat Balonu**: Her zaman erişilebilir AI asistanı
+
+### 🎯 Kullanıcı Deneyimi
+- **Modern UI/UX**: iOS tarzı Cupertino tasarım
+- **Tema Desteği**: Açık/koyu tema seçenekleri
+- **Paylaşım**: Notlarınızı e-posta ve WhatsApp ile paylaşın
+- **Bulut Senkronizasyon**: Supabase ile tüm cihazlarda senkronize
+
+---
+
+## 🚀 Teknolojiler
+
+### Frontend
+- **Flutter 3.9.2** - Cross-platform mobil geliştirme
+- **Provider** - State management
+- **Flutter Quill** - Zengin metin editörü
+- **Lottie** - Animasyonlar
+
+### Backend & Servisler
+- **Supabase** - Backend as a Service (Authentication, Database, Storage)
+- **OpenAI API** - AI chatbot entegrasyonu
+
+### Önemli Paketler
+- `flutter_quill` - Metin editörü
+- `syncfusion_flutter_pdfviewer` - PDF görüntüleme
+- `photo_view` - Resim görüntüleme
+- `file_picker` & `image_picker` - Dosya seçimi
+- `share_plus` - Paylaşım özellikleri
+
+---
+
+## 📱 Platform Desteği
+
+- ✅ iOS
+- ✅ Android
+- ✅ macOS
+- ✅ Linux
+- ✅ Windows
+- ✅ Web
+
+---
+
+## 🛠️ Kurulum
+
+### Gereksinimler
+- Flutter SDK 3.9.2 veya üzeri
+- Dart SDK
+- iOS: Xcode 14+ (macOS için)
+- Android: Android Studio veya VS Code
+
+### Adımlar
+
+1. **Repository'yi klonlayın**
+```bash
+git clone https://github.com/yourusername/thanette.git
+cd thanette
+```
+
+2. **Bağımlılıkları yükleyin**
+```bash
+flutter pub get
+```
+
+3. **Environment değişkenlerini ayarlayın**
+```bash
+# assets/env/.env dosyası oluşturun
+SUPABASE_URL=your_supabase_url
+SUPABASE_ANON_KEY=your_supabase_anon_key
+OPENAI_API_KEY=your_openai_api_key
+```
+
+4. **Uygulamayı çalıştırın**
+```bash
+flutter run
+```
+
+---
+
+## 📸 Ekran Görüntüleri
+
+<div align="center">
+
+### Not Listesi
+![Notes List](assets/images/screenshot-notes.png)
+
+### Çizim Modu
+![Drawing Mode](assets/images/screenshot-drawing.png)
+
+### AI Asistanı
+![AI Assistant](assets/images/screenshot-chatbot.png)
+
+</div>
+
+---
+
+## 🎯 Kullanım Senaryoları
+
+### Öğrenciler İçin
+- 📚 Ders notları alma ve düzenleme
+- ✏️ PDF'ler üzerine notlar ekleme
+- 📝 Ödev takibi ve görev listeleri
+- 🤖 AI ile notları iyileştirme
+
+### Profesyoneller İçin
+- 💼 Toplantı notları
+- 📊 Proje dokümantasyonu
+- 🎨 Tasarım notları ve eskizler
+- 📎 Belge yönetimi
+
+### Günlük Kullanım
+- 📝 Günlük notlar ve hatırlatıcılar
+- ✅ Kişisel görev listeleri
+- 🎨 Yaratıcı çizimler
+- 📱 Her cihazda erişim
+
+---
+
+## 🏗️ Proje Yapısı
+
+```
+lib/
+├── main.dart                 # Uygulama giriş noktası
+├── src/
+│   ├── app.dart             # Ana uygulama widget'ı
+│   ├── models/              # Veri modelleri
+│   ├── providers/           # State management
+│   ├── screens/             # Ekranlar
+│   ├── widgets/             # Yeniden kullanılabilir widget'lar
+│   └── services/            # Servisler
+├── assets/
+│   ├── images/              # Görseller
+│   ├── lottie/              # Animasyonlar
+│   └── env/                 # Environment dosyaları
+└── docs/                    # Dokümantasyon
+```
+
+---
+
+## 🔐 Güvenlik
+
+- ✅ Supabase Authentication ile güvenli giriş
+- ✅ Environment variables ile API key yönetimi
+- ✅ Row Level Security (RLS) politikaları
+- ✅ Güvenli dosya yükleme ve depolama
+
+---
+
+## 🤝 Katkıda Bulunma
+
+Bu proje şu anda özel bir projedir. Katkıda bulunmak için lütfen önce iletişime geçin.
+
+---
+
+## 📄 Lisans
+
+Bu proje özel bir lisans altındadır. Tüm hakları saklıdır.
+
+---
+
+## 👨‍💻 Geliştirici
+
+**Thanette Development Team**
+
+- Modern ve kullanıcı dostu arayüz
+- Performans odaklı geliştirme
+- Sürekli iyileştirme ve güncellemeler
+
+---
+
+## 🌟 Öne Çıkan Özellikler
+
+### 🎨 Çizim Sistemi
+- **Gerçek Zamanlı Rendering**: Optimize edilmiş çizim motoru
+- **Multi-touch Desteği**: İki parmakla kaydırma desteği
+- **State Management**: Çizim sırasında veri kaybını önleyen akıllı state yönetimi
+
+### 📱 Responsive Tasarım
+- Tüm ekran boyutlarına uyumlu
+- Tablet ve telefon optimizasyonu
+- Klavye ve çizim modu geçişleri
+
+### ⚡ Performans
+- Lazy loading
+- Optimize edilmiş render döngüleri
+- Efficient state updates
+
+---
+
+## 📞 İletişim
+
+Sorularınız veya önerileriniz için:
+- 📧 Email: [your-email@example.com]
+- 🐛 Issues: [GitHub Issues](https://github.com/yourusername/thanette/issues)
+
+---
+
+<div align="center">
+
+**⭐ Bu projeyi beğendiyseniz yıldız vermeyi unutmayın! ⭐**
+
+Made with ❤️ using Flutter
+
+</div>

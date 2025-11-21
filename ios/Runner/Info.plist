@@ -51,5 +51,12 @@
 	<string>Thanette uygulaması notlarınıza fotoğraf eklemek için fotoğraf galerinize erişim istiyor.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Thanette uygulaması video kaydetmek için mikrofon erişimi istiyor.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>mailto</string>
+		<string>whatsapp</string>
+		<string>tel</string>
+		<string>sms</string>
+	</array>
 </dict>
 </plist>

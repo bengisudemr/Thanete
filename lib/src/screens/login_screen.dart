@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thanette/src/providers/auth_provider.dart';
-import 'package:thanette/src/widgets/thanette_logo.dart';
+import 'package:thanette/src/providers/theme_provider.dart';
 import 'package:thanette/src/screens/notes_list_screen.dart';
+import 'package:thanette/src/widgets/ui/ui_primitives.dart';
 
 class LoginScreen extends StatefulWidget {
   static const route = '/login';
@@ -14,509 +16,386 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
-  bool _isRegister = false;
+  DateTime? _birthDate;
+  bool _isRegister = false; // login <-> register
+  bool _obscurePassword = true;
+  String? _emailError;
 
   @override
   void dispose() {
     _emailController.dispose();
+    _passwordController.dispose();
     _nameController.dispose();
     super.dispose();
   }
 
   Future<void> _continueWithEmail() async {
+    // Clear previous errors
+    setState(() {
+      _emailError = null;
+    });
+
     final email = _emailController.text.trim();
-    final name = _nameController.text.trim();
-    if (email.isEmpty) return;
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lütfen email adresinizi girin')),
+      );
+      return;
+    }
+    if (password.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Lütfen şifrenizi girin')));
+      return;
+    }
+
     try {
-      debugPrint('[LoginScreen] continueWithEmail email=$email name=$name');
+      debugPrint(
+        '[LoginScreen] continueWithEmail email=$email isRegister=$_isRegister',
+      );
+
       if (_isRegister) {
-        await context.read<AuthProvider>().registerWithEmailOnly(
+        // Register with email + password + optional name & birthDate
+        await context.read<AuthProvider>().signUpUser(
           email,
-          name: name.isEmpty ? null : name,
+          password,
+          name: _nameController.text.trim().isEmpty
+              ? null
+              : _nameController.text.trim(),
+          birthDate: _birthDate,
         );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kayıt başarılı! Hoş geldiniz!')),
+        );
+        Navigator.of(context).pushReplacementNamed(NotesListScreen.route);
       } else {
-        await context.read<AuthProvider>().loginWithEmailOnly(email);
+        // Login with password (required)
+        await context.read<AuthProvider>().loginWithPassword(email, password);
+        if (!mounted) return;
+        Navigator.of(context).pushReplacementNamed(NotesListScreen.route);
       }
-      if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed(NotesListScreen.route);
     } catch (e) {
       debugPrint('[LoginScreen] continueWithEmail error: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Giriş başarısız: $e')));
+      
+      // Extract error message from AuthException
+      String errorMessage = 'Bir hata oluştu. Lütfen tekrar deneyin.';
+      if (e is AuthException) {
+        errorMessage = e.message;
+      } else if (e.toString().contains('AuthException')) {
+        // Try to extract message from string representation
+        final match = RegExp(r'AuthException: (.+)').firstMatch(e.toString());
+        if (match != null) {
+          errorMessage = match.group(1) ?? errorMessage;
+        }
+      }
+      
+      // Check if it's an email already registered error
+      final isEmailAlreadyRegistered = errorMessage.toLowerCase().contains('zaten kayıtlı') ||
+          errorMessage.toLowerCase().contains('already registered') ||
+          errorMessage.toLowerCase().contains('email already exists');
+      
+      if (isEmailAlreadyRegistered && _isRegister) {
+        // Show error under email field only, no SnackBar
+        setState(() {
+          _emailError = errorMessage;
+        });
+      } else {
+        // Show SnackBar for other errors
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: AppTheme.error,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    final isCompact = size.height < 740;
-    final isKeyboardOpen = keyboardHeight > 0;
+    return _buildSimpleAuth();
+  }
 
-    return Scaffold(
-      resizeToAvoidBottomInset: true,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF8F9FA), Color(0xFFFFFFFF)],
-          ),
+  Widget _buildSimpleAuth() {
+    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    return AppScaffold(
+      padded: false,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.spacingXXL,
+          vertical: AppTheme.spacingXXL,
         ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight:
-                    size.height -
-                    MediaQuery.of(context).padding.top -
-                    MediaQuery.of(context).padding.bottom,
-              ),
-              child: IntrinsicHeight(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: isCompact ? 20 : 32,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!isKeyboardOpen) ...[
+              const SizedBox(height: AppTheme.spacingXXL),
+              _LoginHero(),
+              const SizedBox(height: AppTheme.spacingXXXL),
+            ],
+            SurfaceCard(
+              padding: const EdgeInsets.all(AppTheme.spacingXXL),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    _isRegister
+                        ? 'Yeni bir hesap oluştur'
+                        : 'Tekrar hoş geldin',
+                    style: AppTheme.textTheme.titleLarge,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Logo section
-                      Center(
-                        child: Column(
-                          children: [
-                            ThanetteLogo(
-                              size: (_isRegister || isCompact || isKeyboardOpen)
-                                  ? 44
-                                  : 56,
-                              showText: true,
-                            ),
-                            SizedBox(
-                              height:
-                                  (_isRegister || isCompact || isKeyboardOpen)
-                                  ? 12
-                                  : 24,
-                            ),
-                            if (!isKeyboardOpen)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.05),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: const Text(
-                                  '✨ Yeni bir deneyim',
-                                  style: TextStyle(
-                                    color: Color(0xFF6B7280),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                          ],
+                  const SizedBox(height: AppTheme.spacingS),
+                  Text(
+                    _isRegister
+                        ? 'Kayıt olmak için bilgilerini paylaş.'
+                        : 'thanette hesabınla giriş yap.',
+                    style: AppTheme.textTheme.bodyMedium?.copyWith(
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  if (_isRegister) ...[
+                    const SizedBox(height: AppTheme.spacingXL),
+                    TextField(
+                      controller: _nameController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        hintText: 'Ad Soyad',
+                        prefixIcon: Icon(Icons.person_outline),
+                      ),
+                    ),
+                    const SizedBox(height: AppTheme.spacingM),
+                    _BirthDatePicker(
+                      birthDate: _birthDate,
+                      onPick: (date) => setState(() => _birthDate = date),
+                    ),
+                  ],
+                  if (_isRegister) const SizedBox(height: AppTheme.spacingXL),
+                  if (!_isRegister) const SizedBox(height: AppTheme.spacingXXL),
+                  TextField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    onChanged: (_) {
+                      // Clear error when user starts typing
+                      if (_emailError != null) {
+                        setState(() {
+                          _emailError = null;
+                        });
+                      }
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'E‑posta adresi',
+                      prefixIcon: const Icon(Icons.mail_outline),
+                      errorText: _emailError,
+                      errorMaxLines: 2,
+                    ),
+                  ),
+                  if (_emailError != null) ...[
+                    const SizedBox(height: AppTheme.spacingS),
+                    Container(
+                      padding: const EdgeInsets.all(AppTheme.spacingM),
+                      decoration: BoxDecoration(
+                        color: AppTheme.error.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+                        border: Border.all(
+                          color: AppTheme.error.withOpacity(0.3),
                         ),
                       ),
-
-                      const SizedBox(height: 24),
-
-                      // Welcome text section
-                      Text(
-                        'tüm notların\ntek bir yerde',
-                        style: TextStyle(
-                          fontSize: (_isRegister || isCompact || isKeyboardOpen)
-                              ? 22
-                              : 28,
-                          fontWeight: FontWeight.w800,
-                          height: 1.1,
-                          color: const Color(0xFF1F2937),
-                        ),
-                      ),
-                      SizedBox(
-                        height: (_isRegister || isCompact || isKeyboardOpen)
-                            ? 6
-                            : 12,
-                      ),
-                      Text(
-                        'istediğin zaman not al, düşüncelerini kaydet,\ngerisini bize bırak',
-                        style: TextStyle(
-                          color: const Color(0xFF6B7280),
-                          fontSize: (_isRegister || isCompact || isKeyboardOpen)
-                              ? 13
-                              : 16,
-                          height: 1.3,
-                        ),
-                      ),
-
-                      SizedBox(
-                        height: (_isRegister || isCompact || isKeyboardOpen)
-                            ? 8
-                            : 12,
-                      ),
-
-                      // Features section (hide on register, compact screens, or when keyboard is open)
-                      if (!(_isRegister || isCompact || isKeyboardOpen)) ...[
-                        _buildFeatureRow(
-                          icon: Icons.edit_note_outlined,
-                          title: 'Hızlı not alma',
-                          subtitle: 'Düşüncelerini anında kaydet',
-                        ),
-                        const SizedBox(height: 12),
-                        _buildFeatureRow(
-                          icon: Icons.palette_outlined,
-                          title: 'Renkli kategoriler',
-                          subtitle: 'Notlarını renklerle organize et',
-                        ),
-                        const SizedBox(height: 12),
-                        _buildFeatureRow(
-                          icon: Icons.offline_bolt_outlined,
-                          title: 'Şifresiz giriş',
-                          subtitle: 'E-posta ile tek tıkla başla',
-                        ),
-                      ],
-
-                      SizedBox(
-                        height: (_isRegister || isCompact || isKeyboardOpen)
-                            ? 8
-                            : 16,
-                      ),
-
-                      // Email-only login section
-                      Container(
-                        padding: EdgeInsets.all(
-                          (_isRegister || isCompact || isKeyboardOpen)
-                              ? 14
-                              : 24,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
-                              blurRadius: 14,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Mode toggle tabs
-                            Container(
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF3F4F6),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              padding: const EdgeInsets.all(4),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(10),
-                                      onTap: () {
-                                        if (_isRegister) {
-                                          setState(() {
-                                            _isRegister = false;
-                                          });
-                                        }
-                                      },
-                                      child: Container(
-                                        height: 40,
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          color: !_isRegister
-                                              ? const Color(0xFFFFFFFF)
-                                              : Colors.transparent,
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          boxShadow: !_isRegister
-                                              ? [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withOpacity(0.04),
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 2),
-                                                  ),
-                                                ]
-                                              : null,
-                                        ),
-                                        child: const Text(
-                                          'Giriş Yap',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF374151),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(10),
-                                      onTap: () {
-                                        if (!_isRegister) {
-                                          setState(() {
-                                            _isRegister = true;
-                                          });
-                                        }
-                                      },
-                                      child: Container(
-                                        height: 40,
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          color: _isRegister
-                                              ? const Color(0xFFFFFFFF)
-                                              : Colors.transparent,
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          boxShadow: _isRegister
-                                              ? [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withOpacity(0.04),
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 2),
-                                                  ),
-                                                ]
-                                              : null,
-                                        ),
-                                        child: const Text(
-                                          'Kayıt Ol',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF374151),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            SizedBox(
-                              height:
-                                  (_isRegister || isCompact || isKeyboardOpen)
-                                  ? 12
-                                  : 16,
-                            ),
-                            Text(
-                              _isRegister
-                                  ? 'İsmini ve e-posta adresi'
-                                  : 'E-posta',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF374151),
-                              ),
-                            ),
-                            SizedBox(
-                              height:
-                                  (_isRegister || isCompact || isKeyboardOpen)
-                                  ? 12
-                                  : 16,
-                            ),
-                            if (_isRegister) ...[
-                              TextField(
-                                controller: _nameController,
-                                textCapitalization: TextCapitalization.words,
-                                decoration: InputDecoration(
-                                  hintText: 'Ad Soyad',
-                                  prefixIcon: const Icon(Icons.person_outline),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                  filled: true,
-                                  fillColor: const Color(0xFFF9FAFB),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                            ],
-                            TextField(
-                              controller: _emailController,
-                              keyboardType: TextInputType.emailAddress,
-                              decoration: InputDecoration(
-                                hintText: 'ornek@email.com',
-                                prefixIcon: const Icon(Icons.mail_outline),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide.none,
-                                ),
-                                filled: true,
-                                fillColor: const Color(0xFFF9FAFB),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 16,
-                                ),
-                              ),
-                            ),
-                            SizedBox(
-                              height:
-                                  (_isRegister || isCompact || isKeyboardOpen)
-                                  ? 10
-                                  : 16,
-                            ),
-                            SizedBox(
-                              width: double.infinity,
-                              height:
-                                  (_isRegister || isCompact || isKeyboardOpen)
-                                  ? 48
-                                  : 52,
-                              child: ElevatedButton(
-                                onPressed: _continueWithEmail,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFEC60FF),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                                child: Text(
-                                  _isRegister ? 'Kayıt Ol' : 'Giriş Yap',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    _isRegister
-                                        ? 'Hesabın var mı? '
-                                        : 'Hesabın yok mu? ',
-                                    style: const TextStyle(
-                                      color: Color(0xFF6B7280),
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                    softWrap: false,
-                                  ),
-                                ),
-                                TextButton(
-                                  style: TextButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 6,
-                                    ),
-                                    minimumSize: const Size(0, 32),
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      _isRegister = !_isRegister;
-                                    });
-                                  },
-                                  child: Text(
-                                    _isRegister ? 'Giriş Yap' : 'Kayıt Ol',
-                                    style: const TextStyle(
-                                      color: Color(0xFFEC60FF),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      SizedBox(
-                        height: (_isRegister || isCompact || isKeyboardOpen)
-                            ? 12
-                            : 24,
-                      ),
-
-                      // Footer text
-                      Center(
-                        child: Text(
-                          'Giriş yaparak Kullanım Şartları\'nı kabul etmiş olursun',
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 12,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 20,
+                            color: AppTheme.error,
                           ),
-                          textAlign: TextAlign.center,
+                          const SizedBox(width: AppTheme.spacingS),
+                          Expanded(
+                            child: Text(
+                              _emailError!,
+                              style: AppTheme.textTheme.bodySmall?.copyWith(
+                                color: AppTheme.error,
+                              ),
+                            ),
+                          ),
+                          if (_isRegister)
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _isRegister = false;
+                                  _emailError = null;
+                                });
+                              },
+                              child: Text(
+                                'Giriş Yap',
+                                style: AppTheme.textTheme.bodySmall?.copyWith(
+                                  color: AppTheme.primaryPink,
+                                  fontWeight: AppTheme.fontWeightSemiBold,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: AppTheme.spacingM),
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    decoration: InputDecoration(
+                      hintText: 'Şifre',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: AppTheme.spacingXXL),
+                  PrimaryButton(
+                    onPressed: _continueWithEmail,
+                    label: _isRegister ? 'Kayıt Ol' : 'Giriş Yap',
+                    icon: Icons.arrow_forward,
+                  ),
+                ],
               ),
             ),
-          ),
+            const SizedBox(height: AppTheme.spacingXL),
+            SurfaceCard(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppTheme.spacingXXL,
+                vertical: AppTheme.spacingL,
+              ),
+              borderColor: Colors.transparent,
+              borderWidth: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    _isRegister ? 'Hesabın var mı?' : 'Hesabın yok mu?',
+                    style: AppTheme.textTheme.bodyMedium?.copyWith(
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: AppTheme.spacingS),
+                  TertiaryButton(
+                    onPressed: () => setState(() => _isRegister = !_isRegister),
+                    label: _isRegister ? 'Giriş Yap' : 'Kayıt Ol',
+                    expand: false,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppTheme.spacingXXL),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildFeatureRow({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Row(
+  // (removed) legacy feature row helper
+}
+
+class _LoginHero extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
       children: [
         Container(
-          width: 48,
-          height: 48,
+          width: 96,
+          height: 96,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFEC60FF), Color(0xFFFF4D79)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(12),
+            gradient: AppTheme.primaryGradientLinear,
+            borderRadius: BorderRadius.circular(AppTheme.radiusXXLarge),
+            boxShadow: AppTheme.primaryShadow,
           ),
-          child: Icon(icon, color: Colors.white, size: 24),
+          child: const Icon(Icons.edit_note, color: Colors.white, size: 40),
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF374151),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
-              ),
-            ],
+        const SizedBox(height: AppTheme.spacingXL),
+        Text('thanette', style: AppTheme.textTheme.headlineLarge),
+        const SizedBox(height: AppTheme.spacingS),
+        Text(
+          'Modern, sakin ve güçlü bir not alanı.',
+          style: AppTheme.textTheme.bodyLarge?.copyWith(
+            color: AppTheme.textSecondary,
           ),
+          textAlign: TextAlign.center,
         ),
       ],
+    );
+  }
+}
+
+class _BirthDatePicker extends StatelessWidget {
+  const _BirthDatePicker({required this.birthDate, required this.onPick});
+
+  final DateTime? birthDate;
+  final ValueChanged<DateTime?> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () async {
+        final now = DateTime.now();
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: DateTime(now.year - 18, now.month, now.day),
+          firstDate: DateTime(1900, 1, 1),
+          lastDate: now,
+          helpText: 'Doğum Tarihi',
+        );
+        onPick(picked);
+      },
+      borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+      child: Container(
+        height: 58,
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL),
+        decoration: BoxDecoration(
+          color: AppTheme.backgroundPrimary,
+          borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+          border: Border.all(color: AppTheme.borderLight),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.cake_outlined,
+              color: AppTheme.primaryPink.withOpacity(0.8),
+            ),
+            const SizedBox(width: AppTheme.spacingM),
+            Expanded(
+              child: Text(
+                birthDate == null
+                    ? 'Doğum Tarihi'
+                    : '${birthDate!.day.toString().padLeft(2, '0')}.${birthDate!.month.toString().padLeft(2, '0')}.${birthDate!.year}',
+                style: AppTheme.textTheme.bodyLarge?.copyWith(
+                  color: birthDate == null
+                      ? AppTheme.textSecondary
+                      : AppTheme.textPrimary,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: AppTheme.textTertiary,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

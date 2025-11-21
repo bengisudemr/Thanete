@@ -19,5 +19,8 @@ Future<void> main() async {
 
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
 
+  // Initialize OpenAI (will be used by ChatbotProvider)
+  // OpenAI API key should be added to .env file as OPENAI_API_KEY=your_key_here
+
   runApp(const ThanetteApp());
 }

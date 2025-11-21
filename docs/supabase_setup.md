@@ -9,6 +9,9 @@ create table if not exists public.notes (
   content text not null,
   color integer,
   is_pinned boolean default false,
+  drawing_data text,
+  apple_drawing_data text,
+  attachments text,
   created_at timestamptz not null default now()
 );
 ```
@@ -18,6 +21,9 @@ If you already have the notes table, run these SQL commands to add the missing c
 ```sql
 alter table public.notes add column if not exists color integer;
 alter table public.notes add column if not exists is_pinned boolean default false;
+alter table public.notes add column if not exists drawing_data text;
+alter table public.notes add column if not exists apple_drawing_data text;
+alter table public.notes add column if not exists attachments text;
 ```
 
 ## Enable Row Level Security
@@ -48,6 +54,18 @@ create policy "users can delete own notes"
 
 ## Realtime
 Supabase Realtime will work automatically for the `notes` table when using the client subscription in `SupabaseService.subscribeToNotes`.
+
+## Profiles Table Setup
+For user profile features (name editing, profile photo), run the SQL commands in `docs/profile_setup.sql`:
+```sql
+-- Run profile_setup.sql in Supabase SQL Editor
+```
+
+This creates:
+- `profiles` table with `name`, `avatar_url`, etc.
+- `avatars` storage bucket for profile photos
+- Row Level Security policies
+- Storage policies for avatar uploads
 
 ## Environment
 Put these in `.env` (already referenced in `pubspec.yaml`):
