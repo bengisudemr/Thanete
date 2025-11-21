@@ -122,7 +122,7 @@ flutter run
 <div align="center">
 
 ### Not Listesi
-<img width="826" height="1651" alt="image" src="https://github.com/user-attachments/assets/f9b672bd-e078-427e-a035-a2adf4d78f70" />
+<img width="200" height="500" alt="image" src="https://github.com/user-attachments/assets/f9b672bd-e078-427e-a035-a2adf4d78f70" />
 
 ### Çizim Modu
 <img width="918" height="1651" alt="image" src="https://github.com/user-attachments/assets/145800ba-47e0-4c10-8186-f80b30f1919f" />
