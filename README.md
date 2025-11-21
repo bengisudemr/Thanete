@@ -1,4 +1,4 @@
-<img width="812" height="1627" alt="image" src="https://github.com/user-attachments/assets/ffc64441-a860-4169-937d-08dd6c42751f" /># 🎨 Thanette
+# 🎨 Thanette
 
 <div align="center">
 
@@ -125,11 +125,11 @@ flutter run
 <img width="200" height="500" alt="image" src="https://github.com/user-attachments/assets/f9b672bd-e078-427e-a035-a2adf4d78f70" />
 
 ### Çizim Modu
-<img width="918" height="1651" alt="image" src="https://github.com/user-attachments/assets/145800ba-47e0-4c10-8186-f80b30f1919f" />
+<img width="200" height="500" alt="image" src="https://github.com/user-attachments/assets/145800ba-47e0-4c10-8186-f80b30f1919f" />
 
 
 ### AI Asistanı
-<img width="813" height="1631" alt="image" src="https://github.com/user-attachments/assets/c56e0e73-a963-40e0-96e2-166ce274cdb7" />
+<img width="200" height="500" alt="image" src="https://github.com/user-attachments/assets/c56e0e73-a963-40e0-96e2-166ce274cdb7" />
 
 
 </div>
